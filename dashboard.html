@@ -1,0 +1,1105 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Executive Blending Dashboard (Pro Edition) - V6.9</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Sarabun', sans-serif; background-color: #f8fafc; }
+        .glass-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .label-caps { @apply text-[10px] font-bold text-slate-400 uppercase tracking-widest; }
+        .stat-value { @apply text-2xl font-extrabold tracking-tight text-slate-800; }
+        
+        .heatmap-group { @apply mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100; }
+        .heatmap-title { @apply text-[10px] font-bold text-indigo-600 uppercase mb-3 flex justify-between items-center; }
+        
+        .swal2-popup { font-family: 'Sarabun', sans-serif !important; border-radius: 1rem !important; }
+        .info-icon { @apply text-slate-300 hover:text-indigo-500 cursor-pointer transition-colors ml-2 text-sm; }
+        .info-icon-dark { @apply text-slate-400 hover:text-slate-600 cursor-pointer transition-colors ml-2 text-sm; }
+        .info-icon-light { @apply text-white/50 hover:text-white cursor-pointer transition-colors ml-2 text-sm; }
+        
+        /* Custom Scrollbar for Flow Lists */
+        .flow-list::-webkit-scrollbar { width: 4px; }
+        .flow-list::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+        .flow-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .flow-list::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+.chart-container-tall { height: 640px; position: relative; }
+.chart-container-standard { height: 350px; position: relative; }
+.heatmap-full-view { height: auto; min-height: 400px; padding-bottom: 20px; }
+/* กราฟพยากรณ์ที่ยืดความสูงตามครึ่งหนึ่งของกล่อง (สัมพันธ์กับ Heatmap) */
+.chart-container-half-match { flex-basis: 50%; min-height: 640px; position: relative; }
+    </style> </head>
+<body class="bg-slate-50 min-h-screen pb-12">
+
+    <nav class="bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-50 shadow-sm">
+        <div class="container mx-auto flex justify-between items-center flex-wrap gap-4">
+            <div class="flex items-center gap-3">
+                <div class="bg-indigo-600 text-white p-2 rounded-lg shadow-lg"><i class="fas fa-chart-line text-xl"></i></div>
+                <div>
+                    <h1 class="text-xl font-bold text-slate-800 tracking-tight">Executive Dashboard</h1>
+                    <p class="text-[10px] text-slate-400 font-medium text-indigo-500 uppercase">Blending Stock Insight Control</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-4">
+                <a href="index.html" class="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold transition flex items-center gap-2 shadow-sm">
+                    <i class="fas fa-tasks"></i> ระบบจัดการ (Stock Control)
+                </a>
+
+                <div class="text-[10px] font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200">
+                    <i class="fas fa-clock text-indigo-500 mr-1"></i> อัปเดตล่าสุด: <span id="lastTime" class="text-slate-700">-</span>
+                </div>
+                <button onclick="updateAllData()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition flex items-center gap-2">
+                    <i class="fas fa-sync-alt"></i> รีเฟรชข้อมูล
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mx-auto px-4 mt-8 space-y-6">
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div class="glass-card p-5 border-b-4 border-emerald-500">
+                <div class="flex justify-between items-center">
+                    <span class="label-caps">70° สุราดีกรีสูง (In-Stock)</span>
+                    <i class="fas fa-info-circle info-icon-dark" onclick="showInfo('stock70')"></i>
+                </div>
+                <div class="flex items-baseline gap-2 mt-2"><span id="vol70" class="stat-value">0</span><span class="text-xs font-bold text-slate-400 uppercase">L</span></div>
+                <div class="w-full bg-slate-100 h-1.5 rounded-full mt-4 overflow-hidden"><div id="bar70" class="bg-emerald-500 h-full transition-all duration-1000"></div></div>
+                <div class="flex justify-between mt-2 text-[10px] font-bold">
+                    <span class="text-slate-400 italic" id="cap70Label">Cap: 16,540,000 L</span>
+                    <span class="text-blue-500 font-extrabold" id="free70Label">รับได้อีก: 0 L</span>
+                    <span id="pct70" class="text-emerald-600">0%</span>
+                </div>
+            </div>
+
+            <div class="glass-card p-5 border-b-4 border-amber-500">
+                <div class="flex justify-between items-center">
+                    <span class="label-caps">40° สุราขาว (In-Stock)</span>
+                    <i class="fas fa-info-circle info-icon-dark" onclick="showInfo('stock40')"></i>
+                </div>
+                <div class="flex items-baseline gap-2 mt-2"><span id="vol40" class="stat-value">0</span><span class="text-xs font-bold text-slate-400 uppercase">L</span></div>
+                <div class="w-full bg-slate-100 h-1.5 rounded-full mt-4 overflow-hidden"><div id="bar40" class="bg-amber-500 h-full transition-all duration-1000"></div></div>
+                <div class="flex justify-between mt-2 text-[10px] font-bold">
+                    <span class="text-slate-400 italic" id="cap40Label">Cap: - L</span>
+                    <span class="text-blue-500 font-extrabold" id="free40Label">รับได้อีก: 0 L</span>
+                    <span id="pct40" class="text-amber-600">0%</span>
+                </div>
+            </div>
+
+<div class="glass-card p-5 border-b-4 border-fuchsia-500 flex flex-col justify-between">
+    <div class="flex justify-between items-center mb-3">
+        <span class="label-caps text-fuchsia-600">Low Degree สุราขาว (In-Stock)</span>
+        <i class="fas fa-info-circle info-icon-dark" onclick="showInfo('stockLow')"></i>
+    </div>
+    <div class="space-y-4 mt-1">
+        <div>
+            <div class="flex justify-between text-[11px] font-bold text-slate-500 mb-1">
+                <span class="flex items-center gap-1"><i class="fas fa-wine-bottle text-fuchsia-400"></i> 35° Degree</span>
+                <span class="text-slate-800 font-extrabold"><span id="vol35">0</span> <span class="text-[9px] text-slate-400 font-normal">L</span></span>
+            </div>
+            <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden"><div id="bar35" class="bg-fuchsia-400 h-full transition-all duration-1000"></div></div>
+        </div>
+        <div>
+            <div class="flex justify-between text-[11px] font-bold text-slate-500 mb-1">
+                <span class="flex items-center gap-1"><i class="fas fa-wine-bottle text-fuchsia-500"></i> 30° Degree</span>
+                <span class="text-slate-800 font-extrabold"><span id="vol30">0</span> <span class="text-[9px] text-slate-400 font-normal">L</span></span>
+            </div>
+            <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden"><div id="bar30" class="bg-fuchsia-500 h-full transition-all duration-1000"></div></div>
+        </div>
+        <div>
+            <div class="flex justify-between text-[11px] font-bold text-slate-500 mb-1">
+                <span class="flex items-center gap-1"><i class="fas fa-wine-bottle text-fuchsia-600"></i> 28° Degree</span>
+                <span class="text-slate-800 font-extrabold"><span id="vol28">0</span> <span class="text-[9px] text-slate-400 font-normal">L</span></span>
+            </div>
+            <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden"><div id="bar28" class="bg-fuchsia-600 h-full transition-all duration-1000"></div></div>
+        </div>
+    </div>
+</div>
+            <div class="glass-card p-5 bg-slate-800 text-white border-none relative overflow-hidden">
+                <div class="absolute -right-4 -top-4 opacity-5 text-7xl"><i class="fas fa-hourglass-half"></i></div>
+                <div class="flex justify-between items-center relative z-10">
+                    <span class="text-[10px] font-bold uppercase tracking-widest opacity-60">Maturation Alert</span>
+                    <i class="fas fa-info-circle info-icon-light" onclick="showInfo('alert')"></i>
+                </div>
+                <div class="grid grid-cols-2 gap-4 mt-3 relative z-10">
+                    <div>
+                        <div class="text-[9px] text-indigo-300 font-bold mb-1 border-b border-white/20 pb-1">70° ดีกรีสูง</div>
+                        <div class="text-[10px] flex justify-between mt-1"><span class="opacity-70">Ready:</span> <span id="ready70" class="text-emerald-400 font-bold">0 L</span></div>
+                        <div class="text-[10px] flex justify-between mt-1"><span class="opacity-70">Aging:</span> <span id="aging70" class="text-amber-400 font-bold">0 L</span></div>
+                    </div>
+                    <div>
+                        <div class="text-[9px] text-amber-300 font-bold mb-1 border-b border-white/20 pb-1">40° สุราขาว</div>
+                        <div class="text-[10px] flex justify-between mt-1"><span class="opacity-70">Ready:</span> <span id="ready40" class="text-emerald-400 font-bold">0 L</span></div>
+                        <div class="text-[10px] flex justify-between mt-1"><span class="opacity-70">Aging:</span> <span id="aging40" class="text-amber-400 font-bold">0 L</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="glass-card p-6 border-l-4 border-indigo-500">
+            <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-6 border-b border-slate-100 pb-4 gap-4">
+                <div>
+                    <h3 class="text-sm font-bold text-slate-700 flex items-center">
+                        <i class="fas fa-project-diagram text-indigo-500 mr-2"></i> Operations Flow (แผนภาพการทำงาน)
+                        <i class="fas fa-info-circle info-icon" onclick="showInfo('dailyFlow')"></i>
+                    </h3>
+                    <p class="text-[9px] text-slate-400 font-bold mt-1 uppercase">ตรวจสอบ Mass Balance แยกสายสุรา 70° และ 40° ตามช่วงเวลา</p>
+                </div>
+                
+                <div class="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200 shadow-sm flex-wrap w-full xl:w-auto">
+    <label class="text-[10px] font-bold text-slate-500"><i class="fas fa-filter mr-1"></i> ดูข้อมูลแบบ:</label>
+    <select id="flowFilterType" onchange="toggleFlowInputs()" class="text-xs border border-slate-200 bg-white rounded outline-none focus:ring-1 focus:ring-indigo-500 font-bold p-1 text-slate-600">
+        <option value="day">รายวัน (Daily)</option>
+        <option value="week">รายสัปดาห์ (Weekly)</option>
+        <option value="month">รายเดือน (Monthly)</option>
+        <option value="quarter">รายไตรมาส (Quarterly)</option>
+        <option value="fiscal_year">รายปี (Fiscal Year: ต.ค.-ก.ย.)</option>
+    </select>
+
+    <div class="h-4 w-px bg-slate-300 mx-1"></div>
+
+    <input type="date" id="flowDateFilter" onchange="updateDailyFlow()" class="text-xs border border-slate-200 bg-white rounded px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500 text-indigo-600 font-bold cursor-pointer">
+    
+    <input type="week" id="flowWeekFilter" onchange="updateDailyFlow()" class="text-xs border border-slate-200 bg-white rounded px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500 text-indigo-600 font-bold cursor-pointer hidden">
+    
+    <input type="month" id="flowMonthFilter" onchange="updateDailyFlow()" class="text-xs border border-slate-200 bg-white rounded px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500 text-indigo-600 font-bold cursor-pointer hidden">
+    
+    <div id="flowQuarterFilter" class="hidden items-center gap-1">
+        <select id="flowQSelect" onchange="updateDailyFlow()" class="text-xs border border-slate-200 bg-white rounded px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500 text-indigo-600 font-bold cursor-pointer">
+            <option value="1">Q1 (ม.ค. - มี.ค.)</option>
+            <option value="2">Q2 (เม.ย. - มิ.ย.)</option>
+            <option value="3">Q3 (ก.ค. - ก.ย.)</option>
+            <option value="4">Q4 (ต.ค. - ธ.ค.)</option>
+        </select>
+        <span class="text-xs text-slate-400 font-bold">ปี:</span>
+        <input type="number" id="flowYearSelect" onchange="updateDailyFlow()" class="text-xs border border-slate-200 bg-white rounded px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500 text-indigo-600 font-bold w-20 text-center" placeholder="2026" min="2020">
+    </div>
+
+    <div id="flowFiscalYearFilter" class="hidden items-center gap-1">
+        <span class="text-xs text-slate-400 font-bold">ปีงบประมาณ (FY):</span>
+        <input type="number" id="flowFiscalYearInput" onchange="updateDailyFlow()" class="text-xs border border-slate-200 bg-white rounded px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500 text-indigo-600 font-bold w-20 text-center" placeholder="2026" min="2020">
+    </div>
+</div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3 relative w-full">
+                
+                <div class="bg-emerald-50/50 rounded-xl border border-emerald-100 p-3 relative flex flex-col hover:shadow-md transition-shadow min-h-[220px]">
+                    <div class="text-[9px] font-bold text-emerald-600 uppercase mb-1 flex items-center justify-between">
+                        <span><i class="fas fa-tint mr-1"></i> 1. รับกลั่น 70°</span>
+                        <span class="bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full text-[8px]" id="countReceive70">0</span>
+                    </div>
+                    <div class="text-lg font-extrabold text-slate-800 mb-2 border-b border-emerald-200/50 pb-1" id="flowVolReceive70">0 <span class="text-[10px] text-slate-400 font-normal">L</span></div>
+                    <div class="flex-1 overflow-y-auto max-h-[140px] flow-list pr-1" id="flowListReceive70"></div>
+                    <div class="hidden lg:block absolute top-1/2 -right-2 transform -translate-y-1/2 z-10 text-slate-300 text-lg"><i class="fas fa-chevron-right"></i></div>
+                </div>
+
+                <div class="bg-blue-50/50 rounded-xl border border-blue-100 p-3 relative flex flex-col hover:shadow-md transition-shadow min-h-[220px]">
+                    <div class="text-[9px] font-bold text-blue-600 uppercase mb-1 flex items-center justify-between">
+                        <span><i class="fas fa-exchange-alt mr-1"></i> 2. โอนย้าย 70°</span>
+                        <span class="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full text-[8px]" id="countTransfer70">0</span>
+                    </div>
+                    <div class="text-lg font-extrabold text-slate-800 mb-2 border-b border-blue-200/50 pb-1" id="flowVolTransfer70">0 <span class="text-[10px] text-slate-400 font-normal">L</span></div>
+                    <div class="flex-1 overflow-y-auto max-h-[140px] flow-list pr-1" id="flowListTransfer70"></div>
+                    <div class="hidden lg:block absolute top-1/2 -right-2 transform -translate-y-1/2 z-10 text-slate-300 text-lg"><i class="fas fa-chevron-right"></i></div>
+                </div>
+
+                <div class="bg-purple-50/50 rounded-xl border border-purple-100 p-3 relative flex flex-col hover:shadow-md transition-shadow min-h-[220px]">
+                    <div class="text-[9px] font-bold text-purple-600 uppercase mb-1 flex items-center justify-between">
+                        <span><i class="fas fa-flask mr-1"></i> 3. จ่าย 70° ปรุง</span>
+                        <span class="bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full text-[8px]" id="countBlendOut70">0</span>
+                    </div>
+                    <div class="text-lg font-extrabold text-slate-800 mb-2 border-b border-purple-200/50 pb-1" id="flowVolBlendOut70">0 <span class="text-[10px] text-slate-400 font-normal">L</span></div>
+                    <div class="flex-1 overflow-y-auto max-h-[140px] flow-list pr-1" id="flowListBlendOut70"></div>
+                    <div class="hidden lg:block absolute top-1/2 -right-2 transform -translate-y-1/2 z-10 text-slate-300 text-lg"><i class="fas fa-chevron-right"></i></div>
+                </div>
+
+                <div class="bg-fuchsia-50/50 rounded-xl border border-fuchsia-100 p-3 relative flex flex-col hover:shadow-md transition-shadow min-h-[220px]">
+                    <div class="text-[9px] font-bold text-fuchsia-600 uppercase mb-1 flex items-center justify-between">
+                        <span><i class="fas fa-blender mr-1"></i> 4. รับปรุง 40°</span>
+                        <span class="bg-fuchsia-100 text-fuchsia-700 px-1.5 py-0.5 rounded-full text-[8px]" id="countBlendIn40">0</span>
+                    </div>
+                    <div class="text-lg font-extrabold text-slate-800 mb-2 border-b border-fuchsia-200/50 pb-1" id="flowVolBlendIn40">0 <span class="text-[10px] text-slate-400 font-normal">L</span></div>
+                    <div class="flex-1 overflow-y-auto max-h-[140px] flow-list pr-1" id="flowListBlendIn40"></div>
+                    <div class="hidden lg:block absolute top-1/2 -right-2 transform -translate-y-1/2 z-10 text-slate-300 text-lg"><i class="fas fa-chevron-right"></i></div>
+                </div>
+
+                <div class="bg-cyan-50/50 rounded-xl border border-cyan-100 p-3 relative flex flex-col hover:shadow-md transition-shadow min-h-[220px]">
+                    <div class="text-[9px] font-bold text-cyan-600 uppercase mb-1 flex items-center justify-between">
+                        <span><i class="fas fa-exchange-alt mr-1"></i> 5. โอนย้าย 40°</span>
+                        <span class="bg-cyan-100 text-cyan-700 px-1.5 py-0.5 rounded-full text-[8px]" id="countTransfer40">0</span>
+                    </div>
+                    <div class="text-lg font-extrabold text-slate-800 mb-2 border-b border-cyan-200/50 pb-1" id="flowVolTransfer40">0 <span class="text-[10px] text-slate-400 font-normal">L</span></div>
+                    <div class="flex-1 overflow-y-auto max-h-[140px] flow-list pr-1" id="flowListTransfer40"></div>
+                    <div class="hidden lg:block absolute top-1/2 -right-2 transform -translate-y-1/2 z-10 text-slate-300 text-lg"><i class="fas fa-chevron-right"></i></div>
+                </div>
+
+                <div class="bg-amber-50/50 rounded-xl border border-amber-100 p-3 relative flex flex-col hover:shadow-md transition-shadow min-h-[220px]">
+                    <div class="text-[9px] font-bold text-amber-600 uppercase mb-1 flex items-center justify-between">
+                        <span><i class="fas fa-box mr-1"></i> 6. จ่ายบรรจุ</span>
+                        <span class="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full text-[8px]" id="countPack">0</span>
+                    </div>
+                    <div class="text-lg font-extrabold text-slate-800 mb-2 border-b border-amber-200/50 pb-1" id="flowVolPack">0 <span class="text-[10px] text-slate-400 font-normal">L</span></div>
+                    <div class="flex-1 overflow-y-auto max-h-[140px] flow-list pr-1" id="flowListPack"></div>
+                </div>
+
+            </div>
+        </div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+            <div class="glass-card p-6 flex flex-col">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-sm font-bold text-slate-700 flex items-center">
+                        <i class="fas fa-flask text-emerald-500 mr-2"></i> Quality vs. Standard (70°)
+                        <i class="fas fa-info-circle info-icon" onclick="showInfo('radar')"></i>
+                    </h3>
+                    <span class="text-[10px] font-bold text-slate-400 uppercase">10 Batch ล่าสุด</span>
+                </div>
+                <div class="chart-container flex-1">
+                    <canvas id="qcRadarChart70"></canvas>
+                </div>
+            </div>
+
+            <div class="glass-card p-6 flex flex-col">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-sm font-bold text-slate-700 flex items-center">
+                        <i class="fas fa-flask text-amber-500 mr-2"></i> Quality vs. Standard
+                        <i class="fas fa-info-circle info-icon" onclick="showInfo('radar')"></i>
+                    </h3>
+                    <div class="flex items-center gap-2">
+                        <select id="radarDegreeSelect" onchange="updateAllData()" class="text-[10px] font-bold border border-slate-200 bg-amber-50 rounded px-2 py-1 outline-none focus:ring-1 focus:ring-amber-500 text-amber-700 cursor-pointer">
+                            <option value="40">40° สุราขาว</option>
+                            <option value="35">35° สุราขาว</option>
+                            <option value="30">30° สุราขาว</option>
+                            <option value="28">28° สุราขาว</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="chart-container flex-1">
+                    <canvas id="qcRadarChart40"></canvas>
+                </div>
+            </div>
+        </div>
+
+<!-- Row: Zone Capacity & Age Analysis (สถานะปัจจุบันของคลัง) -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+            <div class="glass-card p-6 flex flex-col">
+                <h3 class="text-sm font-bold text-slate-700 mb-6 flex items-center">
+                    <i class="fas fa-warehouse text-blue-500 mr-2"></i> Zone Capacity Analysis
+                    <i class="fas fa-info-circle info-icon" onclick="showInfo('zone')"></i>
+                </h3>
+                <div class="chart-container-standard flex-1">
+                    <canvas id="barChart"></canvas>
+                </div>
+            </div>
+
+            <div class="glass-card p-6 flex flex-col">
+                <div class="mb-6">
+                    <h3 class="text-sm font-bold text-slate-700 flex items-center">
+                        <i class="fas fa-clock text-fuchsia-500 mr-2"></i> อายุเก็บบ่ม (Maturation Age)
+                        <i class="fas fa-info-circle info-icon" onclick="showInfo('age')"></i>
+                    </h3>
+                    <p class="text-[9px] text-slate-400 font-bold mt-1 uppercase">ประสิทธิภาพการหมุนเวียนสต็อกรายอาคาร (ขยายความสูงพิเศษ)</p>
+                </div>
+                <div class="chart-container-tall flex-1">
+                    <canvas id="ageChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+<!-- Row: Maturation Forecast & Heatmap (การวางแผนและจัดการถัง) -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch"> <!-- จุดเปลี่ยนสำคัญ: ใช้ items-stretch ให้ 2 กล่องนี้สูงเท่ากันเสมอ -->
+            <div class="glass-card p-6 flex flex-col justify-start"> <!-- ใช้ justify-start เพื่อให้กราฟเกาะอยู่ด้านบน -->
+                <div class="mb-6">
+                    <h3 class="text-sm font-bold text-slate-700 flex items-center">
+                        <i class="fas fa-calendar-check text-indigo-500 mr-2"></i> Maturation Forecast (7-Day)
+                        <i class="fas fa-info-circle info-icon" onclick="showInfo('forecast')"></i>
+                    </h3>
+                    <p class="text-[9px] text-slate-400 font-bold mt-1 uppercase">พยากรณ์ปริมาณสุราพร้อมใช้รายวัน (ความสูงเทียบเท่า 50% ของ Heatmap)</p>
+                </div>
+                <!-- เรียกใช้คลาสใหม่ที่เราเพิ่งสร้าง -->
+                <div class="chart-container-half-match w-full">
+                    <canvas id="forecastChart"></canvas>
+                </div>
+            </div>
+
+            <div class="glass-card p-6 flex flex-col">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-sm font-bold text-slate-700 flex items-center">
+                        <i class="fas fa-layer-group text-fuchsia-500 mr-2"></i> Stock Maturation Heatmap
+                        <i class="fas fa-info-circle info-icon" onclick="showInfo('heatmap')"></i>
+                    </h3>
+                    <select id="heatmapSort" onchange="updateAllData()" class="text-[10px] font-bold border border-slate-200 rounded p-1 outline-none focus:ring-1 focus:ring-indigo-500">
+                        <option value="daysDesc">อายุบ่ม (มาก-น้อย)</option>
+                        <option value="daysAsc">อายุบ่ม (น้อย-มาก)</option>
+                        <option value="tankId">เลขถัง (A-Z)</option>
+                    </select>
+                </div>
+                <div class="flex gap-4 mb-4 pb-2 border-b border-slate-100">
+                    <div class="flex items-center gap-1"><div class="w-2 h-2 bg-emerald-500 rounded"></div><span class="text-[8px] font-bold text-slate-500">READY</span></div>
+                    <div class="flex items-center gap-1"><div class="w-2 h-2 bg-amber-400 rounded"></div><span class="text-[8px] font-bold text-slate-500">AGING</span></div>
+                    <div class="flex items-center gap-1"><div class="w-2 h-2 bg-red-400 rounded"></div><span class="text-[8px] font-bold text-slate-500">FRESH</span></div>
+                </div>
+                <!-- ใส่ flex-1 เพื่อให้ Heatmap ดันกล่องลงไปตามเนื้อหาจริง -->
+                <div id="heatmapContainer" class="heatmap-full-view flex-1"></div>
+            </div>
+        </div>    <script>
+        const FIXED_CAP_HIGH = 16540000;
+        const BUILDINGS = {
+            "Building_High": { name: "โรงบ่ม (High Degree)", type: "High" },
+            "Building_110": { name: "อาคาร 110 (High Degree)", type: "High" },
+            "Building_111": { name: "อาคาร 111 (40 Degree)", type: "40Deg" }
+        };
+
+        let forecastChartInstance, barChartInstance, radarChart70Instance, radarChart40Instance, ageChartInstance;
+        
+        Chart.register(ChartDataLabels);
+
+        function getISOWeekString(date) {
+            const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+            const dayNum = d.getUTCDay() || 7;
+            d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+            const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+            const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1)/7);
+            return `${d.getUTCFullYear()}-W${weekNo.toString().padStart(2, '0')}`;
+        }
+
+        function toggleFlowInputs() {
+    const type = document.getElementById('flowFilterType').value;
+    document.getElementById('flowDateFilter').classList.toggle('hidden', type !== 'day');
+    document.getElementById('flowWeekFilter').classList.toggle('hidden', type !== 'week');
+    document.getElementById('flowMonthFilter').classList.toggle('hidden', type !== 'month');
+    document.getElementById('flowQuarterFilter').classList.toggle('hidden', type !== 'quarter');
+    document.getElementById('flowFiscalYearFilter').classList.toggle('hidden', type !== 'fiscal_year');
+    
+    const now = new Date();
+    if(!document.getElementById('flowDateFilter').value) {
+        document.getElementById('flowDateFilter').value = now.toISOString().split('T')[0];
+    }
+    if(!document.getElementById('flowWeekFilter').value) {
+        document.getElementById('flowWeekFilter').value = getISOWeekString(now);
+    }
+    if(!document.getElementById('flowMonthFilter').value) {
+        // ค่า Default เป็น YYYY-MM สำหรับ input type="month"
+        document.getElementById('flowMonthFilter').value = now.toISOString().slice(0, 7); 
+    }
+    if(!document.getElementById('flowYearSelect').value) {
+        document.getElementById('flowYearSelect').value = now.getFullYear();
+        document.getElementById('flowQSelect').value = Math.floor(now.getMonth() / 3) + 1;
+    }
+    if(!document.getElementById('flowFiscalYearInput').value) {
+        // คำนวณปีงบประมาณปัจจุบัน (ถ้าเดือนเป็น ต.ค. ขึ้นไป (getMonth >= 9) ให้ปัดเป็นปีถัดไป)
+        document.getElementById('flowFiscalYearInput').value = now.getFullYear() + (now.getMonth() >= 9 ? 1 : 0);
+    }
+
+    updateDailyFlow();
+}
+
+        function showInfo(type) {
+            let title = "", html = "";
+            switch(type) {
+                case 'stock70':
+                    title = "70° สุราดีกรีสูง (In-Stock)";
+                    html = `<div class="text-left text-sm text-slate-600 space-y-3"><p><strong><i class="fas fa-eye text-indigo-500"></i> วิธีดู:</strong> ดูปริมาณน้ำสุราดีกรีสูง 70° ที่มีอยู่จริง (ตัวเลขใหญ่) เปรียบเทียบกับพื้นที่รองรับ (Cap) และช่องว่างที่ยังสามารถรับเพิ่มได้ (รับได้อีก)</p><p><strong><i class="fas fa-calculator text-blue-500"></i> การคำนวณ:</strong> รวมปริมาณ Volume ปัจจุบันของทุกถังที่ถูกระบุว่าเป็นชนิด High Degree แล้วนำมาหักลบกับ Max Capacity รวมของสายการผลิตนั้น</p><p><strong><i class="fas fa-bullseye text-red-500"></i> จุดประสงค์:</strong> เพื่อให้ผู้ควบคุมคลังสามารถประเมินความสามารถในการรับน้ำสุราล็อตใหม่จากฝ่ายกลั่น (Distillation) ได้แบบ Real-time ป้องกันปัญหาน้ำล้นถัง (Overfill)</p></div>`;
+                    break;
+                case 'stock40':
+                    title = "40° สุราขาว (In-Stock)";
+                    html = `<div class="text-left text-sm text-slate-600 space-y-3"><p><strong><i class="fas fa-eye text-indigo-500"></i> วิธีดู:</strong> ดูปริมาณน้ำสุราขาว 40° ที่มีอยู่จริง (ตัวเลขใหญ่) เปรียบเทียบกับพื้นที่รองรับ (Cap) และช่องว่างที่ยังสามารถรับเพิ่มได้ (รับได้อีก)</p><p><strong><i class="fas fa-calculator text-blue-500"></i> การคำนวณ:</strong> รวมปริมาณ Volume ปัจจุบันของทุกถังที่ถูกระบุว่าเป็นชนิด 40 Degree แล้วนำมาหักลบกับ Max Capacity รวมของสายการผลิตนั้น</p><p><strong><i class="fas fa-bullseye text-red-500"></i> จุดประสงค์:</strong> เพื่อบริหารจัดการพื้นที่จัดเก็บสุราขาว 40° โดยเฉพาะ ซึ่งวงจรการบ่มจะเร็วกว่า 70° ช่วยให้วางแผนการเบิกจ่ายไปบรรจุขวดได้อย่างมีประสิทธิภาพ</p></div>`;
+                    break;
+                case 'eff':
+                    title = "Blending Efficiency (ประสิทธิภาพการปรุง)";
+                    html = `<div class="text-left text-sm text-slate-600 space-y-3"><p><strong><i class="fas fa-eye text-indigo-500"></i> วิธีดู:</strong> ตรวจสอบตัวเลขเปอร์เซ็นต์ % Yield หากเข้าใกล้ 100% แสดงว่ากระบวนการปรุงมี Loss น้อย และดูสถานะ Loss Control ด้านล่างว่าอยู่ในเกณฑ์ปกติ (OK) หรือไม่</p><p><strong><i class="fas fa-calculator text-blue-500"></i> การคำนวณ:</strong> คำนวณจากสูตร (Actual Yield สุราที่ปรุงเสร็จ / Standard Theoretical Yield ที่คำนวณจากสูตรการปรุง) * 100</p><p><strong><i class="fas fa-bullseye text-red-500"></i> จุดประสงค์:</strong> ตัวชี้วัดสำคัญของเจ้าหน้าที่ชำนาญการอาวุโส เพื่อควบคุมปริมาณสูญเสียระหว่างกระบวนการปรุง (Blending Loss) ช่วยรักษาต้นทุนการผลิตและ Yield ขององค์กร</p></div>`;
+                    break;
+                case 'alert':
+                    title = "Maturation Alert (สรุปสถานะการบ่ม)";
+                    html = `<div class="text-left text-sm text-slate-600 space-y-3"><p><strong><i class="fas fa-eye text-indigo-500"></i> วิธีดู:</strong> แบ่งเป็น 2 สายการผลิต (70° และ 40°) โดย <b>Ready</b> คือจำนวนที่ครบกำหนดบ่มพร้อมนำไปใช้งาน ส่วน <b>Aging</b> คือจำนวนที่ยังอยู่ในกระบวนการเก็บบ่ม</p><p><strong><i class="fas fa-calculator text-blue-500"></i> การคำนวณ:</strong> ระบบนับรวมปริมาณน้ำสุรา (Liters) จากทุกเลเยอร์ในทุกถัง แยกกลุ่มตามเงื่อนไขวันรับเข้า + ระยะเวลาบ่มมาตรฐาน</p><p><strong><i class="fas fa-bullseye text-red-500"></i> จุดประสงค์:</strong> สรุปภาพรวมแบบรวบรัด เพื่อให้ผู้บริหารหรือหัวหน้างานประเมินสถานะของ Raw Spirits ว่ามีเพียงพอต่อแผนการปรุงและบรรจุขวดของโรงงานหรือไม่</p></div>`;
+                    break;
+                case 'radar':
+                    title = "Quality vs. Standard (QC Radar)";
+                    html = `<div class="text-left text-sm text-slate-600 space-y-3"><p><strong><i class="fas fa-eye text-indigo-500"></i> วิธีดู:</strong> เปรียบเทียบพื้นที่กราฟสีทึบ (ค่าจริง) กับเส้นประ (ค่ามาตรฐาน) หากกราฟเบี้ยวไปด้านใดด้านหนึ่ง หรือทะลุกรอบมาตรฐาน แสดงว่ามีพารามิเตอร์เบี่ยงเบน</p><p><strong><i class="fas fa-calculator text-blue-500"></i> การคำนวณ:</strong> ดึงค่าผลวิเคราะห์ทางเคมี (QC Data) ของ 10 Batch ล่าสุด (Degree, pH, Acid, Aldehyde, Fusel, Turbidity) มาหาค่าเฉลี่ย (Average)</p><p><strong><i class="fas fa-bullseye text-red-500"></i> จุดประสงค์:</strong> เพื่อตรวจสอบคุณภาพและ Character ของน้ำสุราก่อนนำเข้ากระบวนการปรุง (Blending) หากมีสารใดเกินเกณฑ์ เจ้าหน้าที่ชำนาญการจะได้เตรียมตัวปรับสูตรชดเชย</p></div>`;
+                    break;
+                case 'forecast':
+                    title = "Maturation Forecast (พยากรณ์การบ่ม 7 วัน)";
+                    html = `<div class="text-left text-sm text-slate-600 space-y-3"><p><strong><i class="fas fa-eye text-indigo-500"></i> วิธีดู:</strong> แท่ง "พร้อมใช้" อ้างอิงแกน Y ซ้าย ส่วนพยากรณ์ 1-7 วันข้างหน้า อ้างอิงแกน Y ขวา</p><p><strong><i class="fas fa-calculator text-blue-500"></i> การคำนวณ:</strong> นำวันที่รับเข้าบวกระยะเวลามาตรฐาน (14 วัน สำหรับ 70° / 7 วัน สำหรับ 40°) แล้วแจกแจงลงในถังข้อมูลของอีก 7 วันข้างหน้า</p><p><strong><i class="fas fa-bullseye text-red-500"></i> จุดประสงค์:</strong> เพื่อวางแผนเบิกจ่ายน้ำสุราในสัปดาห์ถัดไป (Forward Planning) ช่วยให้เห็นปริมาณที่จะ Flow ออกมาในแต่ละวันล่วงหน้า แก้ปัญหาคอขวด</p></div>`;
+                    break;
+                case 'age':
+                    title = "อายุเก็บบ่ม (Maturation Age by Building)";
+                    html = `<div class="text-left text-sm text-slate-600 space-y-3"><p><strong><i class="fas fa-eye text-indigo-500"></i> วิธีดู:</strong> แท่งกราฟแสดงอายุบ่มต่ำสุด (สีฟ้า), เฉลี่ย (สีม่วง) และสูงสุด (สีชมพู) หากส่วนต่างแคบ แสดงว่ามีการหมุนเวียนสุราได้ดี</p><p><strong><i class="fas fa-calculator text-blue-500"></i> การคำนวณ:</strong> หาความต่างของเวลา (ปัจจุบัน - วันที่รับเข้า) ของทุกถังในอาคารนั้น เพื่อหาค่า Min, Average และ Max</p><p><strong><i class="fas fa-bullseye text-red-500"></i> จุดประสงค์:</strong> ใช้ประเมินประสิทธิภาพของระบบ FIFO เพื่อเฝ้าระวังไม่ให้มีน้ำสุราเก่าเกินกำหนดตกค้าง (Dead Stock) ซึ่งส่งผลต่อการระเหย (Angels' Share) และรสชาติ</p></div>`;
+                    break;
+                case 'zone':
+                    title = "Zone Capacity Analysis (วิเคราะห์พื้นที่รายอาคาร)";
+                    html = `<div class="text-left text-sm text-slate-600 space-y-3"><p><strong><i class="fas fa-eye text-indigo-500"></i> วิธีดู:</strong> แท่งสีน้ำเงินคือ ปริมาณสุราที่มีอยู่จริง แท่งสีเทาคือ พื้นที่ว่างที่รองรับได้เพิ่ม</p><p><strong><i class="fas fa-calculator text-blue-500"></i> การคำนวณ:</strong> นำปริมาตรรวม (Working Volume) เทียบกับความจุสูงสุด (Max Capacity) แบบแยกตามอาคาร/คลัง</p><p><strong><i class="fas fa-bullseye text-red-500"></i> จุดประสงค์:</strong> เพื่อติดตามการกระจายตัวของสต็อก ป้องกันปัญหาอาคารใดอาคารหนึ่งทำงานเต็มพิกัด (Overloaded) ในขณะที่อาคารอื่นมีพื้นที่ว่าง</p></div>`;
+                    break;
+                case 'heatmap':
+                    title = "Stock Maturation Heatmap (แผนผังอายุการบ่ม)";
+                    html = `<div class="text-left text-sm text-slate-600 space-y-3"><p><strong><i class="fas fa-eye text-indigo-500"></i> วิธีดู:</strong> สีบนกระเบื้องสะท้อนสถานะ (เขียว = พร้อม, แดง/เหลือง = กำลังบ่ม) ตัวเลขตรงกลางคือ "จำนวนวันที่บ่มมาแล้ว"</p><p><strong><i class="fas fa-calculator text-blue-500"></i> การคำนวณ:</strong> หาความต่างของวันที่ปัจจุบันเทียบกับวันรับเข้าแบบรายเลเยอร์ (Layer) เพื่อระบุวันเก็บบ่มสุทธิ</p><p><strong><i class="fas fa-bullseye text-red-500"></i> จุดประสงค์:</strong> เครื่องมือระดับปฏิบัติการสำหรับผู้ปฏิบัติงานและเจ้าหน้าที่ช่าง เพื่อจิ้มเลือกถังสุราที่จะนำไปเบิกจ่ายปรุงแบบ First-In First-Out (FIFO) ได้อย่างแม่นยำ</p></div>`;
+                    break;
+                case 'dailyFlow':
+                    title = "Operations Flow (แผนภาพการทำงาน)";
+                    html = `
+                        <div class="text-left text-sm text-slate-600 space-y-3">
+                            <p><strong><i class="fas fa-eye text-indigo-500"></i> วิธีดู:</strong> แผนภาพ 6 ขั้นตอนหลัก: รับกลั่น 70° <i class="fas fa-arrow-right"></i> โอนย้าย 70° <i class="fas fa-arrow-right"></i> จ่าย 70° ปรุง <i class="fas fa-arrow-right"></i> รับปรุง 40° <i class="fas fa-arrow-right"></i> โอนย้าย 40° <i class="fas fa-arrow-right"></i> จ่ายบรรจุ</p>
+                            <p><strong><i class="fas fa-calculator text-blue-500"></i> การคำนวณ:</strong> ระบบจำแนกประเภท Transaction แยกตามดีกรีของถัง และรวบรวมยอดสะสมอัตโนมัติ <b>ตามช่วงเวลาที่คุณเลือก</b> พร้อมระบบ <b class="text-indigo-600">Smart Pairing</b> จับคู่รายการโอนย้ายที่ไม่มี Batch ให้ตรงกันเพื่อลดความซ้ำซ้อน</p>
+                            <p><strong><i class="fas fa-bullseye text-red-500"></i> จุดประสงค์:</strong> ออกแบบมาเพื่อเจ้าหน้าที่ชำนาญการเทคนิคอาวุโส (Senior Technical Officer) เพื่อใช้สอบทาน (Audit) Mass Balance แบบเจาะลึก แยกชัดเจนระหว่างน้ำสุรา 70° และ 40°</p>
+                        </div>`;
+                    break;
+            }
+            Swal.fire({ title: `<span class="text-lg font-bold text-slate-800">${title}</span>`, html: html, icon: 'info', confirmButtonColor: '#4f46e5', confirmButtonText: 'เข้าใจแล้ว', width: '650px' });
+        }
+
+        function loadData() {
+            const txs = JSON.parse(localStorage.getItem('liquor_transactions')) || [];
+            const customTanks = JSON.parse(localStorage.getItem('custom_tanks')) || [];
+            return { txs, customTanks };
+        }
+
+        function updateAllData() {
+            const { txs, customTanks } = loadData();
+            const now = new Date();
+            const tankStates = {};
+            
+            if(!document.getElementById('flowDateFilter').value) toggleFlowInputs();
+
+            customTanks.forEach(t => {
+                tankStates[t.id] = { id: t.id, vol: 0, cap: t.cap, b: t.b, type: BUILDINGS[t.b].type, layers: [] };
+            });
+
+            [...txs].sort((a,b) => new Date(a.date) - new Date(b.date)).forEach(tx => {
+                const t = tankStates[tx.tankId];
+                if (!t) return;
+                
+                if (tx.type.includes('IN') || tx.type === 'INITIAL_IN') {
+                    t.vol += parseFloat(tx.volume);
+                    t.layers.push({ date: tx.date, vol: parseFloat(tx.volume), batch: tx.batch, tankId: tx.tankId });
+                } else if (tx.type.includes('OUT')) {
+                    let v = parseFloat(tx.volume);
+                    t.vol -= v;
+                    while (v > 0 && t.layers.length > 0) {
+                        if (t.layers[0].vol > v) { t.layers[0].vol -= v; v = 0; } 
+                        else { v -= t.layers[0].vol; t.layers.shift(); }
+                    }
+                }
+            });
+
+            Object.values(tankStates).forEach(t => { t.layers = t.layers.filter(l => l.vol > 0.001); });
+
+            const days = Array.from({length: 8}, (_, i) => {
+                const d = new Date(); d.setDate(d.getDate() + i);
+                return d.toISOString().split('T')[0];
+            });
+
+            const forecastData = {
+                high: days.map(d => ({ total: 0, tanks: {} })),
+                deg40: days.map(d => ({ total: 0, tanks: {} }))
+            };
+
+            let ready70 = 0, aging70 = 0, ready40 = 0, aging40 = 0;
+
+            Object.values(tankStates).forEach(t => {
+                const threshold = t.type === 'High' ? 14 : 7;
+                t.layers.forEach(l => {
+                    const matureDate = new Date(l.date);
+                    matureDate.setDate(matureDate.getDate() + threshold);
+                    const diffDays = Math.max(0, Math.ceil((matureDate - now) / (1000 * 60 * 60 * 24)));
+                    const dataset = t.type === 'High' ? forecastData.high : forecastData.deg40;
+                    
+                    if (diffDays <= 0) {
+                        dataset[0].total += l.vol;
+                        dataset[0].tanks[t.id] = (dataset[0].tanks[t.id] || 0) + l.vol;
+                        if(t.type === 'High') ready70 += l.vol; else ready40 += l.vol;
+                    } else if (diffDays <= 7) {
+                        dataset[diffDays].total += l.vol;
+                        dataset[diffDays].tanks[t.id] = (dataset[diffDays].tanks[t.id] || 0) + l.vol;
+                        if(t.type === 'High') aging70 += l.vol; else aging40 += l.vol;
+                    } else {
+                        if(t.type === 'High') aging70 += l.vol; else aging40 += l.vol;
+                    }
+                });
+            });
+
+            renderForecastChart(days, forecastData);
+            renderRadarCharts(txs, tankStates);
+            renderAgeChart(tankStates);
+
+            const zoneStats = {};
+            Object.keys(BUILDINGS).forEach(k => zoneStats[k] = { vol: 0, cap: 0 });
+            Object.values(tankStates).forEach(t => { zoneStats[t.b].vol += t.vol; zoneStats[t.b].cap += t.cap; });
+            renderZoneBar(zoneStats);
+            renderCategorizedHeatmap(tankStates);
+            
+            updateDailyFlow();
+
+            let v70 = Object.values(tankStates).filter(t=>t.type==='High').reduce((s,t)=>s+t.vol,0);
+            let v40 = Object.values(tankStates).filter(t=>t.type==='40Deg').reduce((s,t)=>s+t.vol,0);
+            let c40 = Object.values(tankStates).filter(t=>t.type==='40Deg').reduce((s,t)=>s+t.cap,0);
+// เพิ่มการคำนวณของดีกรีอื่นๆ สำหรับแสดงบน Card
+            let v35 = Object.values(tankStates).filter(t=>t.type==='35Deg').reduce((s,t)=>s+t.vol,0);
+            let c35 = Object.values(tankStates).filter(t=>t.type==='35Deg').reduce((s,t)=>s+t.cap,0);
+
+            let v30 = Object.values(tankStates).filter(t=>t.type==='30Deg').reduce((s,t)=>s+t.vol,0);
+            let c30 = Object.values(tankStates).filter(t=>t.type==='30Deg').reduce((s,t)=>s+t.cap,0);
+
+            let v28 = Object.values(tankStates).filter(t=>t.type==='28Deg').reduce((s,t)=>s+t.vol,0);
+            let c28 = Object.values(tankStates).filter(t=>t.type==='28Deg').reduce((s,t)=>s+t.cap,0);
+            document.getElementById('vol70').innerText = Math.round(v70).toLocaleString();
+            document.getElementById('vol40').innerText = Math.round(v40).toLocaleString();
+            document.getElementById('cap70Label').innerText = `Cap: ${(FIXED_CAP_HIGH).toLocaleString()} L`;
+            document.getElementById('cap40Label').innerText = `Cap: ${c40.toLocaleString()} L`;
+            // เพิ่มการอัปเดตตัวเลขใน Card ใหม่ (มีเช็ค if เพื่อป้องกัน Error กรณี DOM โหลดไม่ทัน)
+            if(document.getElementById('vol35')) {
+                document.getElementById('vol35').innerText = Math.round(v35).toLocaleString();
+                document.getElementById('bar35').style.width = (c35 > 0 ? (v35/c35*100) : (v35 > 0 ? 100 : 0)) + '%';
+            }
+            if(document.getElementById('vol30')) {
+                document.getElementById('vol30').innerText = Math.round(v30).toLocaleString();
+                document.getElementById('bar30').style.width = (c30 > 0 ? (v30/c30*100) : (v30 > 0 ? 100 : 0)) + '%';
+            }
+            if(document.getElementById('vol28')) {
+                document.getElementById('vol28').innerText = Math.round(v28).toLocaleString();
+                document.getElementById('bar28').style.width = (c28 > 0 ? (v28/c28*100) : (v28 > 0 ? 100 : 0)) + '%';
+            }
+            document.getElementById('free70Label').innerText = `รับได้อีก: ${Math.round(Math.max(0, FIXED_CAP_HIGH - v70)).toLocaleString()} L`;
+            document.getElementById('free40Label').innerText = `รับได้อีก: ${Math.round(Math.max(0, c40 - v40)).toLocaleString()} L`;
+
+            document.getElementById('pct70').innerText = (v70/FIXED_CAP_HIGH*100).toFixed(1) + '%';
+            document.getElementById('pct40').innerText = (c40 > 0 ? (v40/c40*100).toFixed(1) : 0) + '%';
+            document.getElementById('bar70').style.width = (v70/FIXED_CAP_HIGH*100) + '%';
+            document.getElementById('bar40').style.width = (c40 > 0 ? (v40/c40*100) : 0) + '%';
+            
+            document.getElementById('ready70').innerText = Math.round(ready70).toLocaleString() + ' L';
+            document.getElementById('aging70').innerText = Math.round(aging70).toLocaleString() + ' L';
+            document.getElementById('ready40').innerText = Math.round(ready40).toLocaleString() + ' L';
+            document.getElementById('aging40').innerText = Math.round(aging40).toLocaleString() + ' L';
+            document.getElementById('lastTime').innerText = now.toLocaleTimeString('th-TH');
+        }
+
+        function updateDailyFlow() {
+            const filterType = document.getElementById('flowFilterType').value;
+            const { txs, customTanks } = loadData();
+            let filteredTxs = [];
+
+            if (filterType === 'day') {
+    const dateVal = document.getElementById('flowDateFilter').value;
+    filteredTxs = txs.filter(t => t.date.startsWith(dateVal));
+} else if (filterType === 'week') {
+    const weekVal = document.getElementById('flowWeekFilter').value;
+    filteredTxs = txs.filter(t => t.date && getISOWeekString(new Date(t.date)) === weekVal);
+} else if (filterType === 'month') {
+    const monthVal = document.getElementById('flowMonthFilter').value;
+    // กรองด้วย YYYY-MM 
+    filteredTxs = txs.filter(t => t.date && t.date.startsWith(monthVal));
+} else if (filterType === 'quarter') {
+    const qVal = parseInt(document.getElementById('flowQSelect').value);
+    const yearVal = parseInt(document.getElementById('flowYearSelect').value);
+    filteredTxs = txs.filter(t => {
+        if(!t.date) return false;
+        const d = new Date(t.date);
+        return d.getFullYear() === yearVal && (Math.floor(d.getMonth() / 3) + 1) === qVal;
+    });
+} else if (filterType === 'fiscal_year') {
+    const fyVal = parseInt(document.getElementById('flowFiscalYearInput').value);
+    filteredTxs = txs.filter(t => {
+        if(!t.date) return false;
+        const d = new Date(t.date);
+        // เดือนใน JavaScript เริ่มจาก 0 (ม.ค.) ถึง 11 (ธ.ค.)
+        // ต.ค. คือ 9 ดังนั้นถ้าเดือน >= 9 จะนับเป็นของปีถัดไป
+        const txFY = d.getFullYear() + (d.getMonth() >= 9 ? 1 : 0);
+        return txFY === fyVal;
+    });
+}
+
+            const tankTypeMap = {};
+            customTanks.forEach(t => tankTypeMap[t.id] = BUILDINGS[t.b] ? BUILDINGS[t.b].type : 'High');
+
+            const flow = {
+                receive70: { total: 0, items: [] }, transfer70: { total: 0, items: [] },
+                blendOut70: { total: 0, items: [] }, blendIn40: { total: 0, items: [] },
+                transfer40: { total: 0, items: [] }, pack: { total: 0, items: [] }
+            };
+// --- ดักจับข้อมูลจ่ายบรรจุ (Flow 6) ตั้งแต่ต้นน้ำ เพื่อป้องกันการถูกดึงไปเข้าโอนย้าย ---
+            const finalFilteredTxs = [];
+            filteredTxs.forEach(tx => {
+                const type = (tx.type || '').toUpperCase();
+                const tId = String(tx.tankId || tx.fromTank || '').trim();
+                
+                // เช็คว่าเป็นถังจ่ายบรรจุหรือไม่ (บังคับว่าต้องขึ้นต้นด้วยรหัสเหล่านี้เท่านั้น)
+            const isPackTank = ['2301', '2302', '2303', '2304'].some(id => tId.startsWith(id));
+            // เช็คว่าเป็นการจ่ายออกหรือไม่
+            const isOut = type.includes('OUT') || type.includes('PACK');
+
+            // บังคับว่าต้องมาจากถัง Pack ที่กำหนด และเป็นการจ่ายออกเท่านั้น
+            if (isPackTank && isOut) {
+                // ดึงเข้ากล่อง 6. จ่ายบรรจุ ทันที
+                    if(flow.pack) {
+                        flow.pack.total += parseFloat(tx.volume) || 0;
+                        flow.pack.items.push({ 
+                            from: tId || 'ไม่ระบุถัง', 
+                            to: 'จ่ายบรรจุ', 
+                            vol: parseFloat(tx.volume) || 0, 
+                            batch: tx.batch 
+                        });
+                    }
+                } else {
+                    // รายการอื่นๆ ที่ไม่ใช่ถังบรรจุ ให้เก็บไว้ไปประมวลผลตามปกติ
+                    finalFilteredTxs.push(tx);
+                }
+            });
+            // อัปเดตข้อมูลที่เหลือให้ระบบ Smart Pairing และ Batch ทำงานต่อ
+            filteredTxs = finalFilteredTxs;
+            // 1. Enhanced Smart Pairing for Transfers (แก้ปัญหาโอนย้าย 40° และ 70° ที่ขึ้น ไม่ระบุ โดยใช้ปริมาตรเป็นเกณฑ์หลัก)
+            const transferOuts = filteredTxs.filter(t => (t.type || '').toUpperCase().includes('TRANSFER') && (t.type || '').toUpperCase().includes('OUT'));
+            const transferIns = filteredTxs.filter(t => (t.type || '').toUpperCase().includes('TRANSFER') && (t.type || '').toUpperCase().includes('IN'));
+            
+            const pairedTransfers = [];
+            const usedTxIds = new Set();
+
+            transferOuts.forEach(outTx => {
+                const v = parseFloat(outTx.volume);
+                
+                // จับคู่ด้วย relatedGroup ก่อน (เพื่อความแม่นยำสูงสุดถ้ามีข้อมูลผูกไว้)
+                let inTx = transferIns.find(t => !usedTxIds.has(t.id) && t.relatedGroup && t.relatedGroup === outTx.relatedGroup);
+                
+                // ถ้าไม่มี relatedGroup (คีย์แยกแบบ Manual) ให้จับคู่ด้วยปริมาตร (Volume) และวันที่ (Date) เพื่อความสมบูรณ์ของ Mass Balance
+                if (!inTx) {
+                    inTx = transferIns.find(t => !usedTxIds.has(t.id) && t.date === outTx.date && parseFloat(t.volume) === v);
+                }
+                
+                if (inTx) {
+                    pairedTransfers.push({
+                        from: outTx.tankId, 
+                        to: inTx.tankId, 
+                        vol: v,
+                        tType: tankTypeMap[outTx.tankId] || 'High',
+                        batch: outTx.batch || inTx.batch || null
+                    });
+                    usedTxIds.add(outTx.id);
+                    usedTxIds.add(inTx.id);
+                }
+            });
+
+            // นำรายการโอนย้ายที่จับคู่ได้เข้า Flow
+            pairedTransfers.forEach(m => {
+                const cat = m.tType === 'High' ? 'transfer70' : 'transfer40';
+                if (flow[cat]) {
+                    flow[cat].total += m.vol;
+                    flow[cat].items.push({ from: m.from, to: m.to, vol: m.vol, batch: m.batch });
+                }
+            });
+
+            // คัดแยก Transaction ที่ถูกจับคู่ไปแล้วออก เพื่อไม่ให้ไปประมวลผลซ้ำใน Batch/Unbatched
+            const remainingTxs = filteredTxs.filter(t => !usedTxIds.has(t.id));
+
+            const batchGroups = {};
+            const noBatchTxs = [];
+
+            remainingTxs.forEach(tx => {
+                if (tx.batch) {
+                    if (!batchGroups[tx.batch]) batchGroups[tx.batch] = [];
+                    batchGroups[tx.batch].push(tx);
+                } else {
+                    noBatchTxs.push(tx);
+                }
+            });
+
+            // ประมวลผลรายการ Unbatched ที่เหลือแบบแยกเดี่ยว
+            // ประมวลผลรายการ Unbatched ที่เหลือแบบแยกเดี่ยว
+            const processIndividualTx = (tx) => {
+                const type = (tx.type || '').toUpperCase();
+                const vol = parseFloat(tx.volume) || 0;
+                const tType = tankTypeMap[tx.tankId] || 'High';
+                const tankStr = String(tx.tankId || tx.fromTank || '').trim();
+                
+                let cat = 'ignore', from = '-', to = '-';
+
+                // Priority 1: ล็อกเป้าถังจ่ายบรรจุ (2301, 2302, 2303, 2304) ให้อยู่บนสุด ดักจับก่อนเข้ากระบวนการอื่น
+                const isPackTank = ['2301', '2302', '2303', '2304'].some(id => tankStr.startsWith(id));
+                const isOutgoing = type.includes('OUT') || type.includes('PACK') || type.includes('TRANSFER');
+
+                if (isPackTank && isOutgoing) {
+                    cat = 'pack';
+                    from = tankStr;
+                    to = 'จ่ายบรรจุ';
+                } 
+                // Priority 2: ตรรกะเดิมของระบบ
+                else if (type.includes('TRANSFER')) {
+                    cat = tType === 'High' ? 'transfer70' : 'transfer40';
+                    if (type.includes('IN')) { from = tx.fromTank || 'ไม่ระบุ'; to = tx.tankId; } 
+                    else if (type.includes('OUT')) { from = tx.tankId; to = tx.toTank || tx.destinationTank || 'ไม่ระบุ'; } 
+                    else { from = tx.fromTank || tx.tankId; to = tx.toTank || tx.destinationTank || 'ไม่ระบุ'; }
+                } else if (type.includes('BLEND')) {
+                    if (tType === 'High' || type.includes('OUT')) { cat = 'blendOut70'; from = tx.fromTank || tx.tankId; to = 'ถังปรุง'; } 
+                    else { cat = 'blendIn40'; from = 'ถังปรุง'; to = tx.tankId; }
+                } else if (type.includes('IN') || type === 'RECEIVE' || type === 'INITIAL_IN') {
+                    if (tType === 'High') { cat = 'receive70'; from = 'รับกลั่น'; to = tx.tankId; } 
+                    else { cat = 'blendIn40'; from = 'ถังปรุง'; to = tx.tankId; }
+                } else if (type.includes('OUT')) {
+                    if (tType === 'High') { cat = 'blendOut70'; from = tx.tankId; to = 'ถังปรุง'; } 
+                    else { cat = 'ignore'; } 
+                } else {
+                    cat = tType === 'High' ? 'receive70' : 'blendIn40';
+                    from = 'อื่นๆ'; to = tx.tankId;
+                }
+
+                if(cat !== 'ignore' && flow[cat]) { 
+                    flow[cat].total += vol; 
+                    flow[cat].items.push({ from, to, vol, batch: tx.batch }); 
+                }
+            };
+
+            noBatchTxs.forEach(tx => processIndividualTx(tx));
+
+            // 2. Process Batched Transactions (แบบกลุ่ม)
+            Object.keys(batchGroups).forEach(batch => {
+                const group = batchGroups[batch];
+                const hasOut = group.some(t => (t.type || '').toUpperCase().includes('OUT'));
+                const hasIn = group.some(t => (t.type || '').toUpperCase().includes('IN'));
+                const isExplicitTransfer = group.some(t => (t.type || '').toUpperCase().includes('TRANSFER'));
+                const isBlend = group.some(t => (t.type || '').toUpperCase().includes('BLEND'));
+
+                if (!isBlend && (isExplicitTransfer || (hasOut && hasIn))) {
+                    let fromTanks = [], toTanks = [], maxVol = 0, referenceTankId = null;
+
+                    group.forEach(tx => {
+                        const type = (tx.type || '').toUpperCase();
+                        const v = parseFloat(tx.volume) || 0;
+                        if (v > maxVol) maxVol = v; 
+
+                        if (type.includes('TRANSFER')) {
+                            if (type.includes('IN')) { toTanks.push(tx.tankId); if(tx.fromTank) fromTanks.push(tx.fromTank); } 
+                            else if (type.includes('OUT')) { fromTanks.push(tx.tankId); if(tx.toTank || tx.destinationTank) toTanks.push(tx.toTank || tx.destinationTank); } 
+                            else { 
+                                if(tx.fromTank) fromTanks.push(tx.fromTank); else fromTanks.push(tx.tankId);
+                                if(tx.toTank || tx.destinationTank) toTanks.push(tx.toTank || tx.destinationTank);
+                            }
+                        } else if (type.includes('OUT') || type === 'PACK') { fromTanks.push(tx.tankId); } 
+                        else if (type.includes('IN') || type === 'RECEIVE') { toTanks.push(tx.tankId); }
+                        
+                        if(!referenceTankId) referenceTankId = tx.tankId;
+                    });
+
+                    const tType = tankTypeMap[referenceTankId] || 'High';
+                    let cat = tType === 'High' ? 'transfer70' : 'transfer40';
+
+                    fromTanks = [...new Set(fromTanks)].filter(Boolean);
+                    toTanks = [...new Set(toTanks)].filter(Boolean);
+
+                    const fromStr = fromTanks.length > 0 ? fromTanks.join(', ') : 'ไม่ระบุ';
+                    const toStr = toTanks.length > 0 ? toTanks.join(', ') : 'ไม่ระบุ';
+
+                    if(flow[cat]) {
+                        flow[cat].total += maxVol;
+                        flow[cat].items.push({ from: fromStr, to: toStr, vol: maxVol, batch: batch });
+                    }
+                } else {
+                    group.forEach(tx => processIndividualTx(tx));
+                }
+            });
+
+            // ปรับ UI ให้ชื่อถังสามารถปัดบรรทัด (break-words) ได้ กรณีที่มีการ Split หลายถัง
+            const renderListHTML = (items, accentColor) => {
+                if(items.length === 0) return `<div class="text-[9px] text-slate-400 text-center py-4 italic">-- ไม่มีรายการ --</div>`;
+                return items.map(t => `
+                    <div class="flex flex-col justify-center bg-white p-2 rounded shadow-sm border border-slate-100 mb-1 hover:border-${accentColor}-200 transition-colors">
+                        <div class="flex justify-between items-start">
+                            <div class="flex items-start gap-1 flex-1 pr-1" title="${t.from} -> ${t.to}">
+                                <span class="text-[9px] font-bold text-slate-600 shrink-0 mt-px">${t.from}</span>
+                                <i class="fas fa-arrow-right text-[7px] text-slate-300 shrink-0 mt-[3px]"></i>
+                                <span class="text-[9px] font-bold text-${accentColor}-600 break-words leading-tight flex-1">${t.to}</span>
+                            </div>
+                            <span class="text-[9px] font-extrabold text-slate-800 ml-1 whitespace-nowrap shrink-0 mt-px">${t.vol.toLocaleString()}</span>
+                        </div>
+                        ${t.batch ? `<div class="text-[7px] text-slate-400 mt-1 pt-1 border-t border-slate-50 flex items-center"><i class="fas fa-hashtag text-${accentColor}-400 mr-1"></i> ${t.batch}</div>` : ''}
+                    </div>
+                `).join('');
+            };
+
+            const updateCard = (cat, color, flowObj) => {
+                const volEl = document.getElementById(`flowVol${cat}`);
+                const countEl = document.getElementById(`count${cat}`);
+                const listEl = document.getElementById(`flowList${cat}`);
+                if(volEl) volEl.innerHTML = `${Math.round(flowObj.total).toLocaleString()} <span class="text-[9px] text-slate-400 font-normal">L</span>`;
+                if(countEl) countEl.innerText = `${flowObj.items.length} รายการ`;
+                if(listEl) listEl.innerHTML = renderListHTML(flowObj.items, color);
+            };
+
+            updateCard('Receive70', 'emerald', flow.receive70);
+            updateCard('Transfer70', 'blue', flow.transfer70);
+            updateCard('BlendOut70', 'purple', flow.blendOut70);
+            updateCard('BlendIn40', 'fuchsia', flow.blendIn40);
+            updateCard('Transfer40', 'cyan', flow.transfer40);
+            updateCard('Pack', 'amber', flow.pack);
+        }
+
+function renderRadarCharts(txs, tankStates) {
+    const txs70 = [], txsSelected = [];
+    
+    // ดึงค่าจาก Dropdown (ค่า Default คือ '40' หากเพิ่งโหลดหน้าเว็บ)
+    const selectedDegree = document.getElementById('radarDegreeSelect') ? document.getElementById('radarDegreeSelect').value : '40';
+    const targetType = selectedDegree + 'Deg';
+
+    txs.filter(t => t.qcData).forEach(t => {
+        if(tankStates[t.tankId]) {
+            if(tankStates[t.tankId].type === 'High') txs70.push(t);
+            else if(tankStates[t.tankId].type === targetType) txsSelected.push(t);
+        }
+    });
+
+    const calcAvg = (data) => {
+        const avg = { deg:0, ph:0, acid:0, ald:0, fus:0, tur:0 };
+        if (data.length === 0) return avg;
+        data.slice(-10).forEach(t => {
+            avg.deg += parseFloat(t.qcData.degree || 0);
+            avg.ph += parseFloat(t.qcData.ph || 0);
+            avg.acid += parseFloat(t.qcData.acid || 0) * 1000;
+            avg.ald += parseFloat(t.qcData.aldehyde || 0) / 2;
+            avg.fus += parseFloat(t.qcData.fusel || 0) / 100;
+            avg.tur += parseFloat(t.qcData.turbidity || 0) * 10;
+        });
+        Object.keys(avg).forEach(k => avg[k] /= Math.min(data.length, 10));
+        return avg;
+    };
+
+    const commonOptions = {
+        scales: { r: { beginAtZero: true, ticks: { display: false } } },
+        plugins: { legend: { position: 'bottom' }, datalabels: { display: false } },
+        maintainAspectRatio: false
+    };
+
+    // --- Render 70° Chart (คงเดิม) ---
+    const avg70 = calcAvg(txs70);
+    if (radarChart70Instance) radarChart70Instance.destroy();
+    radarChart70Instance = new Chart(document.getElementById('qcRadarChart70').getContext('2d'), {
+        type: 'radar',
+        data: {
+            labels: ['Degree', 'pH', 'Acid', 'Aldehyde', 'Fusel', 'Turbidity'],
+            datasets: [
+                { label: 'Avg 70° Profile', data: [avg70.deg, avg70.ph*10, avg70.acid*10, avg70.ald, avg70.fus, avg70.tur], backgroundColor: 'rgba(16, 185, 129, 0.2)', borderColor: '#10b981', borderWidth: 2 },
+                { label: 'Golden Standard', data: [70, 45, 30, 80, 45, 15], fill: false, borderColor: 'rgba(148, 163, 184, 0.5)', borderDash: [5, 5] }
+            ]
+        }, options: commonOptions
+    });
+
+    // --- Render Selected Degree Chart ---
+    const avgSelected = calcAvg(txsSelected);
+    
+    // กำหนด Golden Standard แบบ Dynamic ตามดีกรี
+    // ตัวเลขพารามิเตอร์มาตรฐานสามารถปรับจูนให้ตรงกับ Spec จริงของฝ่ายควบคุมคุณภาพได้
+    const standardsMap = {
+        '40': [40, 40, 25, 60, 35, 10],
+        '35': [35, 40, 25, 55, 30, 10],
+        '30': [30, 40, 25, 50, 25, 10],
+        '28': [28, 40, 25, 45, 20, 10]
+    };
+    const currentStandard = standardsMap[selectedDegree] || standardsMap['40'];
+
+    if (radarChart40Instance) radarChart40Instance.destroy();
+    radarChart40Instance = new Chart(document.getElementById('qcRadarChart40').getContext('2d'), {
+        type: 'radar',
+        data: {
+            labels: ['Degree', 'pH', 'Acid', 'Aldehyde', 'Fusel', 'Turbidity'],
+            datasets: [
+                { label: `Avg ${selectedDegree}° Profile`, data: [avgSelected.deg, avgSelected.ph*10, avgSelected.acid*10, avgSelected.ald, avgSelected.fus, avgSelected.tur], backgroundColor: 'rgba(245, 158, 11, 0.2)', borderColor: '#f59e0b', borderWidth: 2 },
+                { label: `Golden Standard (${selectedDegree}°)`, data: currentStandard, fill: false, borderColor: 'rgba(148, 163, 184, 0.5)', borderDash: [5, 5] }
+            ]
+        }, options: commonOptions
+    });
+}        function renderAgeChart(states) {
+            const bldgs = {};
+            Object.keys(BUILDINGS).forEach(k => bldgs[k] = { totalDays: 0, count: 0, maxAge: 0, minAge: Infinity });
+            const now = new Date();
+
+            Object.values(states).forEach(t => {
+                t.layers.forEach(l => {
+                    const days = Math.max(0, Math.floor((now - new Date(l.date)) / (1000 * 60 * 60 * 24)));
+                    if (bldgs[t.b]) {
+                        bldgs[t.b].totalDays += days;
+                        bldgs[t.b].count += 1;
+                        if (days > bldgs[t.b].maxAge) bldgs[t.b].maxAge = days;
+                        if (days < bldgs[t.b].minAge) bldgs[t.b].minAge = days;
+                    }
+                });
+            });
+
+            const labels = Object.keys(BUILDINGS).map(k => BUILDINGS[k].name);
+            const avgAges = Object.keys(BUILDINGS).map(k => bldgs[k].count > 0 ? (bldgs[k].totalDays / bldgs[k].count) : 0);
+            const maxAges = Object.keys(BUILDINGS).map(k => bldgs[k].maxAge);
+            const minAges = Object.keys(BUILDINGS).map(k => bldgs[k].count > 0 ? bldgs[k].minAge : 0);
+
+            if (ageChartInstance) ageChartInstance.destroy();
+            ageChartInstance = new Chart(document.getElementById('ageChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'อายุบ่มต่ำสุด', data: minAges, backgroundColor: 'rgba(56, 189, 248, 0.8)', borderRadius: 4 },
+                        { label: 'อายุบ่มเฉลี่ย', data: avgAges, backgroundColor: 'rgba(139, 92, 246, 0.8)', borderRadius: 4 },
+                        { label: 'อายุบ่มสูงสุด', data: maxAges, backgroundColor: 'rgba(236, 72, 153, 0.8)', borderRadius: 4 }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    layout: { padding: { top: 20 } },
+                    plugins: {
+                        datalabels: {
+                            anchor: 'end', align: 'top', offset: 2, color: '#475569', font: { size: 10, weight: 'bold' },
+                            formatter: (v) => v > 0 ? Math.round(v) : '', display: (ctx) => ctx.dataset.data[ctx.dataIndex] > 0
+                        }
+                    },
+                    scales: { y: { beginAtZero: true, title: { display: true, text: 'วัน (Days)' }, grace: '20%' } }
+                }
+            });
+        }
+
+        function renderForecastChart(days, data) {
+            const labels = days.map((d, i) => i === 0 ? "พร้อมใช้" : d.split('-').reverse().slice(0,2).join('/'));
+
+            const dsReady70 = data.high.map((d, i) => i === 0 ? d.total : null);
+            const dsReady40 = data.deg40.map((d, i) => i === 0 ? d.total : null);
+            const dsForecast70 = data.high.map((d, i) => i !== 0 ? d.total : null);
+            const dsForecast40 = data.deg40.map((d, i) => i !== 0 ? d.total : null);
+
+            if (forecastChartInstance) forecastChartInstance.destroy();
+            forecastChartInstance = new Chart(document.getElementById('forecastChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: '70° พร้อมใช้ (L)', data: dsReady70, backgroundColor: '#10b981', yAxisID: 'yLeft', tankDetails: data.high.map(d => d.tanks) },
+                        { label: '40° พร้อมใช้ (L)', data: dsReady40, backgroundColor: '#f59e0b', yAxisID: 'yLeft', tankDetails: data.deg40.map(d => d.tanks) },
+                        { label: '70° พยากรณ์ (L)', data: dsForecast70, backgroundColor: '#34d399', yAxisID: 'yRight', tankDetails: data.high.map(d => d.tanks) },
+                        { label: '40° พยากรณ์ (L)', data: dsForecast40, backgroundColor: '#fbbf24', yAxisID: 'yRight', tankDetails: data.deg40.map(d => d.tanks) }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        datalabels: {
+                            anchor: 'center', align: 'center', color: '#ffffff', font: { size: 10, weight: 'bold' },
+                            formatter: (v) => v > 0 ? v.toLocaleString(undefined, {maximumFractionDigits:0}) : '',
+                            display: (ctx) => ctx.dataset.data[ctx.dataIndex] > 0
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                            titleFont: { family: 'Sarabun', size: 12 },
+                            bodyFont: { family: 'Sarabun', size: 11 },
+                            padding: 10,
+                            cornerRadius: 8,
+                            callbacks: {
+                                afterBody: (items) => {
+                                    const item = items[0];
+                                    const tanks = item.dataset.tankDetails[item.dataIndex];
+                                    if(!tanks || Object.keys(tanks).length === 0) return [];
+                                    let lines = ['', '📌 รายละเอียดถังที่เกี่ยวข้อง:'];
+                                    
+                                    const sortedTanks = Object.entries(tanks).sort((a,b) => b[1] - a[1]);
+                                    
+                                    for (let i = 0; i < sortedTanks.length; i += 2) {
+                                        let col1 = `• ${sortedTanks[i][0]}: ${Math.round(sortedTanks[i][1]).toLocaleString()} L`;
+                                        let col2 = (i + 1 < sortedTanks.length) ? `  |  • ${sortedTanks[i+1][0]}: ${Math.round(sortedTanks[i+1][1]).toLocaleString()} L` : '';
+                                        lines.push(`  ${col1}${col2}`);
+                                    }
+                                    return lines;
+                                },
+                                footer: () => '' 
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { stacked: true },
+                        yLeft: {
+                            type: 'linear', position: 'left', stacked: true, beginAtZero: true, grace: '10%',
+                            title: { display: true, text: 'ปริมาณพร้อมใช้ (แกนซ้าย)', color: '#475569', font: {size: 9} }
+                        },
+                        yRight: {
+                            type: 'linear', position: 'right', stacked: true, beginAtZero: true, grace: '10%',
+                            grid: { drawOnChartArea: false },
+                            title: { display: true, text: 'ปริมาณพยากรณ์ (แกนขวา)', color: '#475569', font: {size: 9} }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderZoneBar(stats) {
+            const labels = Object.keys(stats).map(k => BUILDINGS[k].name);
+            const currentVols = Object.values(stats).map(s => s.vol);
+            const maxCaps = Object.values(stats).map(s => s.cap);
+
+            if (barChartInstance) barChartInstance.destroy();
+            barChartInstance = new Chart(document.getElementById('barChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'ปริมาณที่มีอยู่', data: currentVols, backgroundColor: '#3b82f6', borderRadius: 8 },
+                        { label: 'พื้นที่ว่าง', data: maxCaps.map((c, i) => Math.max(0, c - currentVols[i])), backgroundColor: '#f1f5f9', borderRadius: 8 }
+                    ]
+                },
+                options: {
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false, layout: { padding: { right: 120 } },
+                    plugins: {
+                        legend: { display: false },
+                        datalabels: {
+                            anchor: 'end', align: 'right', color: '#1e293b', font: { size: 10, weight: 'bold' },
+                            formatter: (val, ctx) => ctx.datasetIndex === 1 ? `${Math.round(currentVols[ctx.dataIndex]).toLocaleString()} / ${Math.round(maxCaps[ctx.dataIndex]).toLocaleString()} L` : '',
+                            display: (ctx) => ctx.datasetIndex === 1
+                        }
+                    },
+                    scales: { x: { stacked: true, grid: { display: false }, ticks: { display: false } }, y: { stacked: true } }
+                }
+            });
+        }
+
+        function renderCategorizedHeatmap(states) {
+            const container = document.getElementById('heatmapContainer');
+            container.innerHTML = '';
+            const zones = ["Building_High", "Building_110", "Building_111"];
+            const now = new Date();
+            const sortMethod = document.getElementById('heatmapSort').value;
+
+            zones.forEach(zKey => {
+                const tanksInZone = Object.values(states).filter(t => t.b === zKey);
+                if (tanksInZone.length === 0) return;
+
+                let allLayers = [];
+                tanksInZone.forEach(tank => tank.layers.forEach(l => allLayers.push({ tankId: tank.id, type: tank.type, batch: l.batch, vol: l.vol, days: Math.max(0, Math.floor((now - new Date(l.date)) / (1000 * 60 * 60 * 24))) })));
+
+                if (sortMethod === 'daysDesc') allLayers.sort((a, b) => b.days - a.days);
+                else if (sortMethod === 'daysAsc') allLayers.sort((a, b) => a.days - b.days);
+                else if (sortMethod === 'tankId') allLayers.sort((a, b) => a.tankId.localeCompare(b.tankId));
+
+                if (allLayers.length === 0) return;
+
+                const groupDiv = document.createElement('div');
+                groupDiv.className = 'heatmap-group';
+                groupDiv.innerHTML = `<div class="heatmap-title"><div class="flex items-center gap-2"><i class="fas fa-warehouse text-slate-400"></i> ${BUILDINGS[zKey].name}</div> <span class="text-[9px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded">${allLayers.length} Layers</span></div>`;
+                
+                const tilesDiv = document.createElement('div');
+                tilesDiv.className = 'flex flex-wrap gap-1.5';
+
+                allLayers.forEach(l => {
+                    const threshold = l.type === 'High' ? 14 : 7;
+                    let color = l.days >= threshold ? 'bg-emerald-500' : (l.days >= threshold * 0.7 ? 'bg-emerald-300' : (l.days >= threshold * 0.4 ? 'bg-amber-400' : 'bg-red-400'));
+                    const tile = document.createElement('div');
+                    tile.className = `${color} w-9 h-9 rounded shadow-sm flex items-center justify-center text-[10px] text-white font-extrabold cursor-help hover:scale-110 transition-transform`;
+                    tile.innerText = l.days; 
+                    tile.title = `ถัง: ${l.tankId}\nBatch: ${l.batch || '-'}\nปริมาณ: ${Math.round(l.vol).toLocaleString()} L\nบ่มแล้ว: ${l.days} วัน`;
+                    tilesDiv.appendChild(tile);
+                });
+
+                groupDiv.appendChild(tilesDiv);
+                container.appendChild(groupDiv);
+            });
+        }
+
+        window.onload = updateAllData;
+    </script>
+</body>
+</html>
