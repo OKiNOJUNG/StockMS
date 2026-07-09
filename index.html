@@ -1099,6 +1099,7 @@ function updateTrfRow(id, type, field, value) {
 
         // --- CORE LOGIC ---
         function recalculateState() {
+            window.simStateCache = {}; // ล้างแคชประวัติเพื่อให้อัปเดตยอดคงเหลือถูกต้องเมื่อมีการแก้ไขหรือลบ
             initTankStates();
             const sortedTx = [...transactions].sort((a,b) => new Date(a.date) - new Date(b.date) || a.id - b.id);
 
