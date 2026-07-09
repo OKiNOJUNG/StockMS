@@ -122,6 +122,10 @@
                     <i class="fas fa-search-location"></i> Audit Trail
                 </button>
 
+                <button onclick="openReconcileModal()" class="flex items-center gap-2 px-3 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded-lg text-sm font-medium transition shadow-sm mr-1">
+                    <i class="fas fa-balance-scale"></i> ปรับเทียบยอด
+                </button>
+
                 <button onclick="openDailyReport()" class="flex items-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition shadow-sm shadow-indigo-200 mr-2">
                     <i class="fas fa-file-alt"></i> Daily Report
                 </button>
@@ -173,7 +177,7 @@
                         <h3 class="text-slate-500 font-bold text-[10px] uppercase tracking-wider mb-1 pl-2">น้ำสุรา 40°</h3>
                         <div class="mt-1 flex items-baseline gap-1 pl-2"><p class="text-xl font-bold text-slate-800" id="kpi40">0.000</p><span class="text-[10px] text-slate-500 font-medium">L</span></div>
                         <div class="pl-2 flex justify-between mt-1 items-end">
-                            <p class="text-[9px] text-slate-400 font-medium whitespace-nowrap">Shared Cap: 1,568,000 L <i class="fas fa-info-circle ml-1 cursor-pointer text-indigo-400 hover:text-indigo-600 transition" onclick="showTanksByDegree('40')" title="ดูพิกัดถัง"></i></p>
+                            <p class="text-[9px] text-slate-400 font-medium whitespace-nowrap">Total Cap: <span id="capLabel40">1,568,000</span> L <i class="fas fa-info-circle ml-1 cursor-pointer text-indigo-400 hover:text-indigo-600 transition" onclick="showTanksByDegree('40')" title="ดูพิกัดถัง"></i></p>
                             <span class="text-xs font-bold text-amber-600" id="pct40">0.0%</span>
                         </div>
                     </div>
@@ -184,7 +188,7 @@
                         <h3 class="text-slate-500 font-bold text-[10px] uppercase tracking-wider mb-1 pl-2">น้ำสุรา 35°</h3>
                         <div class="mt-1 flex items-baseline gap-1 pl-2"><p class="text-xl font-bold text-slate-800" id="kpi35">0.000</p><span class="text-[10px] text-slate-500 font-medium">L</span></div>
                         <div class="pl-2 flex justify-between mt-1 items-end">
-                            <p class="text-[9px] text-slate-400 font-medium whitespace-nowrap">Shared Cap: 1,568,000 L <i class="fas fa-info-circle ml-1 cursor-pointer text-indigo-400 hover:text-indigo-600 transition" onclick="showTanksByDegree('35')" title="ดูพิกัดถัง"></i></p>
+                            <p class="text-[9px] text-slate-400 font-medium whitespace-nowrap">Total Cap: <span id="capLabel35">1,568,000</span> L <i class="fas fa-info-circle ml-1 cursor-pointer text-indigo-400 hover:text-indigo-600 transition" onclick="showTanksByDegree('35')" title="ดูพิกัดถัง"></i></p>
                             <span class="text-xs font-bold text-blue-600" id="pct35">0.0%</span>
                         </div>
                     </div>
@@ -195,7 +199,7 @@
                         <h3 class="text-slate-500 font-bold text-[10px] uppercase tracking-wider mb-1 pl-2">น้ำสุรา 30°</h3>
                         <div class="mt-1 flex items-baseline gap-1 pl-2"><p class="text-xl font-bold text-slate-800" id="kpi30">0.000</p><span class="text-[10px] text-slate-500 font-medium">L</span></div>
                         <div class="pl-2 flex justify-between mt-1 items-end">
-                            <p class="text-[9px] text-slate-400 font-medium whitespace-nowrap">Shared Cap: 1,568,000 L <i class="fas fa-info-circle ml-1 cursor-pointer text-indigo-400 hover:text-indigo-600 transition" onclick="showTanksByDegree('30')" title="ดูพิกัดถัง"></i></p>
+                            <p class="text-[9px] text-slate-400 font-medium whitespace-nowrap">Total Cap: <span id="capLabel30">1,568,000</span> L <i class="fas fa-info-circle ml-1 cursor-pointer text-indigo-400 hover:text-indigo-600 transition" onclick="showTanksByDegree('30')" title="ดูพิกัดถัง"></i></p>
                             <span class="text-xs font-bold text-purple-600" id="pct30">0.0%</span>
                         </div>
                     </div>
@@ -206,7 +210,7 @@
                         <h3 class="text-slate-500 font-bold text-[10px] uppercase tracking-wider mb-1 pl-2">น้ำสุรา 28°</h3>
                         <div class="mt-1 flex items-baseline gap-1 pl-2"><p class="text-xl font-bold text-slate-800" id="kpi28">0.000</p><span class="text-[10px] text-slate-500 font-medium">L</span></div>
                         <div class="pl-2 flex justify-between mt-1 items-end">
-                            <p class="text-[9px] text-slate-400 font-medium whitespace-nowrap">Shared Cap: 1,568,000 L <i class="fas fa-info-circle ml-1 cursor-pointer text-indigo-400 hover:text-indigo-600 transition" onclick="showTanksByDegree('28')" title="ดูพิกัดถัง"></i></p>
+                            <p class="text-[9px] text-slate-400 font-medium whitespace-nowrap">Total Cap: <span id="capLabel28">1,568,000</span> L <i class="fas fa-info-circle ml-1 cursor-pointer text-indigo-400 hover:text-indigo-600 transition" onclick="showTanksByDegree('28')" title="ดูพิกัดถัง"></i></p>
                             <span class="text-xs font-bold text-pink-600" id="pct28">0.0%</span>
                         </div>
                     </div>
@@ -694,7 +698,10 @@
    <div class="p-4 border-b border-slate-200 bg-slate-50">
                         <div class="flex justify-between items-center mb-2">
                             <h3 class="font-bold text-sm text-slate-600">จัดการคลัง/อาคาร</h3>
-                            <button onclick="manageBuildings()" class="text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-2 py-1 rounded font-bold shadow-sm transition"><i class="fas fa-building"></i> แก้ไขอาคาร</button>
+                            <div class="flex gap-1">
+                                <button onclick="openGlobalSettings()" class="text-[10px] bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 px-2 py-1 rounded font-bold shadow-sm transition"><i class="fas fa-globe"></i> ตั้งค่าความจุรวม</button>
+                                <button onclick="manageBuildings()" class="text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-2 py-1 rounded font-bold shadow-sm transition"><i class="fas fa-building"></i> แก้ไขอาคาร</button>
+                            </div>
                         </div>
                         <div class="flex gap-2 mb-2 mt-3">
                             <input type="text" id="msNewTankId" placeholder="ชื่อ/รหัสถัง (เช่น 1/111)" class="w-1/3 border rounded p-1.5 text-xs font-bold outline-none focus:ring-1">
@@ -912,10 +919,8 @@ if (BUILDINGS["Building_110"]?.name.includes("High Degree")) BUILDINGS["Building
 const DEFAULT_TANKS = [
             ...Array.from({length: 14}, (_, i) => ({ id: `${i+1}/111`, b: "Building_111", cap: 112000, zone: "40Deg Zone 1" })),
             // เพิ่มถัง 2301 - 2304 ขนาด 10,500 L เข้าโครงสร้างอาคารบรรจุ (Building_111)
-            { id: "2301", b: "Building_111", cap: 10500, zone: "40Deg Zone 1" },
-            { id: "2302", b: "Building_111", cap: 10500, zone: "40Deg Zone 1" },
-            { id: "2303", b: "Building_111", cap: 10500, zone: "40Deg Zone 1" },
-            { id: "2304", b: "Building_111", cap: 10500, zone: "40Deg Zone 1" },
+            // เพิ่มถัง 2319 ขนาด 16,000 L เข้าโครงสร้างอาคารบรรจุ (Building_111)
+            { id: "2319", b: "Building_111", cap: 16000, zone: "40Deg Zone 1" },
             // เพิ่มถังเฉพาะเจาะจงในอาคาร 110 (ระบุ type เพื่อให้แยกเป็น 40 ดีกรีโดยเฉพาะ)
             // เพิ่มถังเฉพาะเจาะจงในอาคาร 110 (เปลี่ยน type เป็น High เพื่อระบุว่าเป็น 70 ดีกรี)
             { id: "2009", b: "Building_110", cap: 161000, zone: "High Zone 1", type: "High" },
@@ -932,18 +937,11 @@ const DEFAULT_TANKS = [
 
         let TANK_DEFINITIONS = JSON.parse(localStorage.getItem('custom_tanks')) || DEFAULT_TANKS;
         
-        // 🚨 MIGRATION SCRIPT: ตรวจสอบและฝังถังใหม่เข้าฐานข้อมูล LocalStorage อัตโนมัติ (ไม่ต้องล้างระบบ)
-        if (!TANK_DEFINITIONS.find(t => t.id === "2301")) {
-            TANK_DEFINITIONS.push({ id: "2301", b: "Building_111", cap: 10500, zone: "40Deg Zone 1" });
-        }
-        if (!TANK_DEFINITIONS.find(t => t.id === "2302")) {
-            TANK_DEFINITIONS.push({ id: "2302", b: "Building_111", cap: 10500, zone: "40Deg Zone 1" });
-        }
-        if (!TANK_DEFINITIONS.find(t => t.id === "2303")) {
-            TANK_DEFINITIONS.push({ id: "2303", b: "Building_111", cap: 10500, zone: "40Deg Zone 1" });
-        }
-        if (!TANK_DEFINITIONS.find(t => t.id === "2304")) {
-            TANK_DEFINITIONS.push({ id: "2304", b: "Building_111", cap: 10500, zone: "40Deg Zone 1" });
+        // 🚨 MIGRATION SCRIPT: ลบถัง 2301-2304 เดิมทิ้ง และฝัง 2319 เข้าไปแทนแบบอัตโนมัติ
+        TANK_DEFINITIONS = TANK_DEFINITIONS.filter(t => !['2301', '2302', '2303', '2304'].includes(t.id));
+
+        if (!TANK_DEFINITIONS.find(t => t.id === "2319")) {
+            TANK_DEFINITIONS.push({ id: "2319", b: "Building_111", cap: 16000, zone: "40Deg Zone 1" });
         }
 
         // ส่วนสำหรับอัปเดตข้อมูลถังกลุ่ม 2009-2013 เดิม (บังคับอัปเดตให้เป็น High 70 ดีกรี)
@@ -993,6 +991,7 @@ const DEFAULT_TANKS = [
         let tankConfig = JSON.parse(localStorage.getItem('tank_config')) || {}; 
         let activeTanks = JSON.parse(localStorage.getItem('active_tanks')) || { high: null, deg40: null, nextHigh: null, next40: null };
 let planningData = JSON.parse(localStorage.getItem('planning_data')) || { highSupply: 0, highUsage: 0, deg40Usage: 0, deg35Usage: 0, deg30Usage: 0, deg28Usage: 0 };
+let globalSettings = JSON.parse(localStorage.getItem('global_settings')) || { cap40: 1568000, cap35: 1568000, cap30: 1568000, cap28: 1568000, cap70: 0 };
         let tankStates = {}; 
         let seriesRows = [];
         let payRows = []; 
@@ -1207,6 +1206,18 @@ extractedLayers.push({ batch: currentLayer.batch, date: currentLayer.date, volum
             localStorage.setItem('planning_data', JSON.stringify(planningData));
             localStorage.setItem('custom_tanks', JSON.stringify(TANK_DEFINITIONS));
             localStorage.setItem('custom_buildings', JSON.stringify(BUILDINGS));
+            localStorage.setItem('global_settings', JSON.stringify(globalSettings));
+        }
+
+        function saveGlobalSettings() {
+            globalSettings.cap70 = parseFloat(document.getElementById('gsCap70').value) || 0;
+            globalSettings.cap40 = parseFloat(document.getElementById('gsCap40').value) || 0;
+            globalSettings.cap35 = parseFloat(document.getElementById('gsCap35').value) || 0;
+            globalSettings.cap30 = parseFloat(document.getElementById('gsCap30').value) || 0;
+            globalSettings.cap28 = parseFloat(document.getElementById('gsCap28').value) || 0;
+            saveData();
+            updateDashboard();
+            Swal.fire('บันทึกสำเร็จ', 'อัปเดตความจุรวมเรียบร้อยแล้ว', 'success');
         }
 
         function exportData() {
@@ -1290,15 +1301,15 @@ function importData(input) {
         }
 
         // --- MASTER SETUP (Settings) ---
-        function openMasterSettingsModal() {
+        function openMasterSettingsModal(tankId = null) {
             document.getElementById('masterSetupModal').classList.remove('hidden');
             const bSelect = document.getElementById('msNewTankBldg');
             bSelect.innerHTML = '<option value="" disabled selected>เลือกอาคาร</option>';
             Object.keys(BUILDINGS).forEach(key => {
                 bSelect.innerHTML += `<option value="${key}">${BUILDINGS[key].name}</option>`;
             });
+            msSelectedTank = typeof tankId === 'string' ? tankId : null;
             renderMsTankList();
-            msSelectedTank = null;
             renderMsLayerEditor();
         }
         function closeMasterSettingsModal() {
@@ -1416,9 +1427,38 @@ function importData(input) {
             const title = document.getElementById('msSelectedTankTitle');
 
             if(!msSelectedTank) {
-                title.innerText = "กรุณาเลือกถังจากรายการซ้ายมือ";
-                actions.classList.add('hidden');
-                editor.innerHTML = `<div class="text-center text-slate-400 mt-20"><i class="fas fa-layer-group text-5xl mb-4 opacity-30"></i><p>เลือกถังเพื่อกำหนด Layer ยอดยกมา</p></div>`;
+                title.innerText = "ตั้งค่าความจุรวมของระบบ (Global Settings)";
+                actions.classList.remove('hidden');
+                actions.innerHTML = `<button onclick="saveGlobalSettings()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded text-xs font-bold shadow-sm transition"><i class="fas fa-save mr-1"></i> บันทึกความจุ</button>`;
+                editor.innerHTML = `
+                    <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm max-w-2xl mx-auto mt-4">
+                        <h4 class="text-lg font-bold text-slate-700 mb-4 border-b pb-2"><i class="fas fa-sliders-h text-indigo-500 mr-2"></i> กำหนดความจุรวม (Total Cap.) สำหรับแต่ละดีกรี</h4>
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-600 mb-1">ความจุ 70 ดีกรี (L)</label>
+                                <input type="number" id="gsCap70" class="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" value="${globalSettings.cap70}">
+                                <p class="text-[10px] text-slate-400 mt-1">ใส่ 0 หากต้องการใช้ผลรวมความจุจากถังทั้งหมด</p>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-600 mb-1">ความจุ 40 ดีกรี (L)</label>
+                                <input type="number" id="gsCap40" class="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" value="${globalSettings.cap40}">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-600 mb-1">ความจุ 35 ดีกรี (L)</label>
+                                <input type="number" id="gsCap35" class="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" value="${globalSettings.cap35}">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-600 mb-1">ความจุ 30 ดีกรี (L)</label>
+                                <input type="number" id="gsCap30" class="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" value="${globalSettings.cap30}">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-600 mb-1">ความจุ 28 ดีกรี (L)</label>
+                                <input type="number" id="gsCap28" class="w-full border rounded p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" value="${globalSettings.cap28}">
+                            </div>
+                        </div>
+                    </div>
+                `;
                 return;
             }
 
@@ -1446,7 +1486,8 @@ function importData(input) {
 
             if (currentTankState && currentTankState.layers && currentTankState.layers.length > 0) {
                 currentStateHtml += `<div class="space-y-2 max-h-48 overflow-y-auto pr-2">`;
-                currentTankState.layers.forEach((layer, idx) => {
+                let displayLayers = currentTankState.layers.map((layer, idx) => ({layer, idx})).sort((a,b) => new Date(b.layer.date) - new Date(a.layer.date));
+                displayLayers.forEach(({layer, idx}) => {
                     // หาที่มาของ Transaction
                     const tx = transactions.find(t => t.id === layer.originalTxId);
                     let processText = '<span class="text-slate-500">ยอดยกมา</span>';
@@ -1480,6 +1521,9 @@ function importData(input) {
                                 <button onclick="editCurrentLayer('${msSelectedTank}', ${idx})" class="w-7 h-7 flex items-center justify-center bg-amber-50 text-amber-600 hover:bg-amber-500 hover:text-white rounded border border-amber-200 transition" title="แก้ไขข้อมูลเลเยอร์นี้">
                                     <i class="fas fa-pencil-alt"></i>
                                 </button>
+                                <button onclick="deleteCurrentLayer('${msSelectedTank}', ${idx})" class="w-7 h-7 flex items-center justify-center bg-red-50 text-red-600 hover:bg-red-500 hover:text-white rounded border border-red-200 transition" title="ลบข้อมูลเลเยอร์นี้">
+                                    <i class="fas fa-trash"></i>
+                                </button>
                             </div>
                         </div>
                     `;
@@ -1506,7 +1550,6 @@ function importData(input) {
             editor.innerHTML = html;
 
             window.msLayerData = [];
-            initialTxs.forEach(tx => window.msLayerData.push({...tx}));
             drawMsLayers();
         }
 
@@ -1848,6 +1891,30 @@ function updateBuildingDropdowns() {
             }
         }
 
+        async function deleteCurrentLayer(tankId, layerIndex) {
+            const tank = tankStates[tankId];
+            const layer = tank.layers[layerIndex];
+            if (!layer || !layer.originalTxId) return;
+
+            const tx = transactions.find(t => t.id === layer.originalTxId);
+            if (!tx) { Swal.fire('Error', 'ไม่พบประวัติอ้างอิงของเลเยอร์นี้', 'error'); return; }
+
+            const res = await Swal.fire({
+                title: 'ยืนยันการลบเลเยอร์',
+                text: `คุณต้องการลบเลเยอร์นี้และประวัติ (Batch: ${layer.batch || '-'}) ออกจากระบบใช่หรือไม่?`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                confirmButtonText: 'ลบข้อมูล'
+            });
+
+            if(res.isConfirmed) {
+                transactions = transactions.filter(t => t.id !== tx.id);
+                saveData(); recalculateState(); renderMsLayerEditor();
+                Swal.fire('Deleted!', 'ลบเลเยอร์เรียบร้อยแล้ว', 'success');
+            }
+        }
+
         function msAddEmptyLayer() {
             const def = TANK_DEFINITIONS.find(t => t.id === msSelectedTank);
             const defaultDeg = BUILDINGS[def.b].type === 'High' ? "70" : "40";
@@ -1974,10 +2041,9 @@ function updateBuildingDropdowns() {
                 });
             }
 
-            transactions = transactions.filter(t => !(t.tankId === msSelectedTank && t.type === 'INITIAL_IN'));
             transactions.push(...newInitialTxs);
             
-            saveData(); recalculateState();
+            saveData(); recalculateState(); renderMsLayerEditor();
             Swal.fire('Saved', 'บันทึกยอดยกมาเรียบร้อย', 'success');
         }
 
@@ -2197,13 +2263,19 @@ TANK_DEFINITIONS.forEach(t => {
             }
 
             // 3. อัปเดตตัวเลขแสดงผลบนหน้าจอ (KPI & Max Capacity)
-            if(document.getElementById('maxCap70')) document.getElementById('maxCap70').innerText = totalHighCap.toLocaleString();
+            let finalCap70 = globalSettings.cap70 > 0 ? globalSettings.cap70 : totalHighCap;
+            if(document.getElementById('maxCap70')) document.getElementById('maxCap70').innerText = finalCap70.toLocaleString();
             
-            updateKPI('kpi70', 'pct70', volMap["70"], totalHighCap);
-            updateKPI('kpi40', 'pct40', volMap["40"], total40Cap);
-            updateKPI('kpi35', 'pct35', volMap["35"], total40Cap);
-            updateKPI('kpi30', 'pct30', volMap["30"], total40Cap);
-            updateKPI('kpi28', 'pct28', volMap["28"], total40Cap);
+            if(document.getElementById('capLabel40')) document.getElementById('capLabel40').innerText = globalSettings.cap40.toLocaleString();
+            if(document.getElementById('capLabel35')) document.getElementById('capLabel35').innerText = globalSettings.cap35.toLocaleString();
+            if(document.getElementById('capLabel30')) document.getElementById('capLabel30').innerText = globalSettings.cap30.toLocaleString();
+            if(document.getElementById('capLabel28')) document.getElementById('capLabel28').innerText = globalSettings.cap28.toLocaleString();
+
+            updateKPI('kpi70', 'pct70', volMap["70"], finalCap70);
+            updateKPI('kpi40', 'pct40', volMap["40"], globalSettings.cap40);
+            updateKPI('kpi35', 'pct35', volMap["35"], globalSettings.cap35);
+            updateKPI('kpi30', 'pct30', volMap["30"], globalSettings.cap30);
+            updateKPI('kpi28', 'pct28', volMap["28"], globalSettings.cap28);
             
             // 4. คำนวณวันคงเหลือในส่วน Stock Planning
             updateProjections(volMap["70"], volMap["40"], volMap["35"], volMap["30"], volMap["28"]);
@@ -2622,7 +2694,7 @@ return matchTank && matchType && matchDate && matchNote;
                     <td class="px-3 py-3 text-center align-middle hidden sm:table-cell overflow-visible">${statusBadge}</td>
                     <td class="px-3 py-3 text-center whitespace-nowrap align-middle">
                         <div class="flex flex-row gap-1 justify-center">
-                            ${tx.type !== 'INITIAL_IN' ? `<button onclick="editTransaction(${tx.id})" class="btn-action bg-amber-400 hover:bg-amber-500 w-8 h-8 flex items-center justify-center"><i class="fas fa-pencil-alt"></i></button>` : `<button onclick="openMasterSettingsModal()" class="btn-action bg-slate-300 hover:bg-slate-400 w-8 h-8 flex items-center justify-center text-slate-600" title="แก้ไขที่หน้า Master Setup"><i class="fas fa-cogs"></i></button>`}
+                            ${tx.type !== 'INITIAL_IN' ? `<button onclick="editTransaction(${tx.id})" class="btn-action bg-amber-400 hover:bg-amber-500 w-8 h-8 flex items-center justify-center"><i class="fas fa-pencil-alt"></i></button>` : `<button onclick="openMasterSettingsModal('${tx.tankId}')" class="btn-action bg-slate-300 hover:bg-slate-400 w-8 h-8 flex items-center justify-center text-slate-600" title="แก้ไขที่หน้า Master Setup"><i class="fas fa-cogs"></i></button>`}
                             <button onclick="deleteTransaction(${tx.id})" class="btn-action bg-red-400 hover:bg-red-500 w-8 h-8 flex items-center justify-center"><i class="fas fa-trash"></i></button>
                         </div>
                     </td>
@@ -3227,9 +3299,10 @@ function renderPayRows() {
             const txsToPush = [];
             
             txsToPush.push({ id: blendGroup, date: date, tankId: sourceId, type: 'BLEND_OUT', volume: volOut, batch: outBatch1, notes: `Blend Series OUT. ${notes}`, relatedGroup: blendGroup });
-if (sourceId2 && volOut2 > 0) {
-    txsToPush.push({ id: blendGroup + 1, date: date, tankId: sourceId2, type: 'BLEND_OUT', volume: volOut2, batch: outBatch2, notes: `Blend Series OUT (Tank 2). ${notes}`, relatedGroup: blendGroup });
-}
+            if (sourceId2 && volOut2 > 0) {
+                txsToPush.push({ id: blendGroup + 1, date: date, tankId: sourceId2, type: 'BLEND_OUT', volume: volOut2, batch: outBatch2, notes: `Blend Series OUT (Tank 2). ${notes}`, relatedGroup: blendGroup });
+            }
+
             seriesRows.forEach((row, idx) => {
                 const vIn = parseFloat(row.volume);
                 const rowRatio = vIn / totalIn; 
@@ -3541,15 +3614,22 @@ function loadDailyReportData() {
             const dateVal = document.getElementById('reportDate').value;
             if(!dateVal) return;
 
-// กำหนด Total Cap ของรายงานประจำวันแบบคงที่ตามมาตรฐาน
-            let dynamicCapHigh = 13440000; 
-            let dynamicCap40 = 1586000;
+// กำหนด Total Cap ของรายงานประจำวันจาก globalSettings
+            let totalHighCap = 0;
+            TANK_DEFINITIONS.forEach(t => {
+                if (tankConfig[t.id]?.status !== 'bonded' && tankConfig[t.id]?.status !== 'repair') {
+                    const bType = t.type || BUILDINGS[t.b].type;
+                    if (bType === 'High') totalHighCap += t.cap;
+                }
+            });
+            let dynamicCapHigh = globalSettings.cap70 > 0 ? globalSettings.cap70 : totalHighCap;
 
-const products = [    { id: 'high70', name: 'สุราขาวดีกรีสูง 70 ดีกรี', deg: 70, cap: dynamicCapHigh },
-    { id: 'white40', name: 'น้ำสุราขาว 40 ดีกรี', deg: 40, cap: dynamicCap40 },
-    { id: 'white35', name: 'น้ำสุราขาว 35 ดีกรี', deg: 35, cap: 0 },
-    { id: 'white30', name: 'น้ำสุราขาว 30 ดีกรี', deg: 30, cap: 0 },
-    { id: 'white28', name: 'น้ำสุราขาว 28 ดีกรี', deg: 28, cap: 0 }
+const products = [
+    { id: 'high70', name: 'สุราขาวดีกรีสูง 70 ดีกรี', deg: 70, cap: dynamicCapHigh },
+    { id: 'white40', name: 'น้ำสุราขาว 40 ดีกรี', deg: 40, cap: globalSettings.cap40 },
+    { id: 'white35', name: 'น้ำสุราขาว 35 ดีกรี', deg: 35, cap: globalSettings.cap35 },
+    { id: 'white30', name: 'น้ำสุราขาว 30 ดีกรี', deg: 30, cap: globalSettings.cap30 },
+    { id: 'white28', name: 'น้ำสุราขาว 28 ดีกรี', deg: 28, cap: globalSettings.cap28 }
 ];
 
             products.forEach((prod) => {
@@ -3661,8 +3741,8 @@ const products = [    { id: 'high70', name: 'สุราขาวดีกร�
         `;
 
         // 2. อัปเดตภาพรวมหลอด Gauge ตามปริมาตรที่ Fix ไว้
-        const fixedCapHigh = 13440000;
-        const fixedCap40 = 1586000;
+        const fixedCapHigh = 16540000;
+        const fixedCap40 = 1568000;
 
         let currentBalHighAtDate = 0;
         let currentBal40AtDate = 0;
@@ -4204,7 +4284,8 @@ function exportHistoryPDF() {
 
                 txs.forEach(tx => {
                     let actionText = ''; let actionColor = ''; let actionIcon = ''; let vol = parseFloat(tx.volume);
-if (tx.type === 'IN' || tx.type === 'INITIAL_IN') { actionText = 'รับเข้าสุรา'; actionColor = 'text-emerald-600 bg-emerald-50'; actionIcon = 'fa-arrow-down'; totalIn += vol; }
+                    if (tx.type === 'INITIAL_IN') { actionText = 'ยอดยกมา'; actionColor = 'text-emerald-600 bg-emerald-50'; actionIcon = 'fa-layer-group'; totalIn += vol; }
+                    else if (tx.type === 'IN') { actionText = 'รับเข้าสุรา'; actionColor = 'text-emerald-600 bg-emerald-50'; actionIcon = 'fa-arrow-down'; totalIn += vol; }
                     else if (tx.type === 'OUT') { actionText = 'จ่ายออก / บรรจุ'; actionColor = 'text-blue-600 bg-blue-50'; actionIcon = 'fa-arrow-up'; totalOut += vol; }
                     else if (tx.type === 'BLEND_IN') { 
                         const d = tx.targetDegree || '40'; // ดึงดีกรีของ Transaction
@@ -4242,7 +4323,7 @@ let s1_txs = txs.filter(t => (t.type === 'IN' || t.type === 'INITIAL_IN') && get
                 let s2_txs = txs.filter(t => (t.type === 'OUT' || t.type === 'BLEND_OUT') && getBType(t.tankId) === 'High');
                 
                 // ใช้การเช็คเงื่อนไขอาคารที่ไม่ใช่ High แทน 40Deg เพื่อให้ครอบคลุมการปรุงทุกดีกรีที่อยู่นอกโรงบ่ม
-                let s3_txs = txs.filter(t => (t.type === 'IN' || t.type === 'BLEND_IN') && getBType(t.tankId) !== 'High');
+                let s3_txs = txs.filter(t => (t.type === 'IN' || t.type === 'BLEND_IN' || t.type === 'INITIAL_IN') && getBType(t.tankId) !== 'High');
                 let s4_txs = txs.filter(t => t.type === 'OUT' && getBType(t.tankId) !== 'High');
 
                 // Insight: ค้นหาดีกรีทั้งหมดที่มีการใช้งานจริงใน Batch/Lot นี้ แล้วนำมาต่อ String (เช่น ถ้าถูกแบ่งไปทั้ง 35° และ 28° จะแสดง "35/28°")
@@ -4311,7 +4392,310 @@ window.onload = function() {
             document.getElementById('tDate').valueAsDate = new Date();
             toggleFormMode();
             recalculateState();
-        };
+};
+
+function openGlobalSettings() {
+    msSelectedTank = null;
+    renderMsTankList();
+    renderMsLayerEditor();
+}
+
+// --- RECONCILE LOGIC ---
+function openReconcileModal() {
+    document.getElementById('reconcileModal').classList.remove('hidden');
+    document.getElementById('reconDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('actRec40').value = '';
+    document.getElementById('actDis40').value = '';
+    document.getElementById('actRec70').value = '';
+    document.getElementById('actDis70').value = '';
+    document.getElementById('reconResults').classList.add('hidden');
+    loadSystemDataForReconcile();
+}
+function closeReconcileModal() {
+    document.getElementById('reconcileModal').classList.add('hidden');
+}
+
+function loadSystemDataForReconcile() {
+    const dateVal = document.getElementById('reconDate').value;
+    if (!dateVal) return;
+    
+    let rec40 = 0, dis40 = 0, rec70 = 0, dis70 = 0;
+    
+    transactions.forEach(tx => {
+        if (tx.date !== dateVal) return;
+        
+        let deg = '40';
+        const tank = TANK_DEFINITIONS.find(t => t.id === tx.tankId);
+        if (tank) {
+            const bType = tank.type || BUILDINGS[tank.b].type;
+            if (bType === 'High') deg = '70';
+        }
+        
+        if (tx.type === 'IN' || tx.type === 'INITIAL_IN') {
+            if (deg === '70') rec70 += tx.volume;
+            else rec40 += tx.volume;
+        } else if (tx.type === 'BLEND_IN') {
+            rec40 += tx.volume;
+        } else if (tx.type === 'OUT') {
+            if (deg !== '70') dis40 += tx.volume;
+        } else if (tx.type === 'BLEND_OUT') {
+            dis70 += tx.volume;
+        }
+    });
+    
+    document.getElementById('sysRec40').value = rec40;
+    document.getElementById('sysDis40').value = dis40;
+    document.getElementById('sysRec70').value = rec70;
+    document.getElementById('sysDis70').value = dis70;
+    document.getElementById('reconResults').classList.add('hidden');
+
+    // Populate Tank-by-Tank
+    const dayTxs = transactions.filter(tx => tx.date === dateVal);
+    const activeTanks = [...new Set(dayTxs.map(tx => tx.tankId))].sort();
+    
+    let tankHtml = '';
+    if (activeTanks.length === 0) {
+        tankHtml = '<div class="text-slate-500 text-sm text-center py-4">ไม่มีการเคลื่อนไหวในวันที่เลือก</div>';
+    } else {
+        tankHtml = `
+            <table class="w-full text-sm text-left">
+                <thead class="bg-slate-100 text-slate-600 sticky top-0">
+                    <tr>
+                        <th class="py-2 px-3 rounded-l">ถัง (Tank)</th>
+                        <th class="py-2 px-3 text-right">ยอดในระบบ (L)</th>
+                        <th class="py-2 px-3 text-right">ยอดจริง (L)</th>
+                        <th class="py-2 px-3 text-right rounded-r">ผลต่าง</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        activeTanks.forEach(tankId => {
+            const sysVol = getTankVolumeAtDate(tankId, dateVal);
+            tankHtml += `
+                <tr class="border-b border-slate-100 hover:bg-slate-50">
+                    <td class="py-2 px-3 font-bold text-slate-700">${tankId}</td>
+                    <td class="py-2 px-3 text-right font-mono text-slate-600">${sysVol.toLocaleString(undefined, {maximumFractionDigits:2})}</td>
+                    <td class="py-2 px-3 text-right">
+                        <input type="number" id="actTank_${tankId}" data-sys="${sysVol}" class="tank-actual-input border border-indigo-200 rounded px-2 py-1 text-right w-24 font-mono font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="0">
+                    </td>
+                    <td class="py-2 px-3 text-right font-bold text-slate-500" id="diffTank_${tankId}">-</td>
+                </tr>
+            `;
+        });
+        tankHtml += `</tbody></table>`;
+    }
+    document.getElementById('tankReconContainer').innerHTML = tankHtml;
+    
+    document.querySelectorAll('.tank-actual-input').forEach(input => {
+        input.addEventListener('input', function() {
+            const tankId = this.id.replace('actTank_', '');
+            const sysVol = parseFloat(this.getAttribute('data-sys')) || 0;
+            const actVol = parseFloat(this.value);
+            const diffCell = document.getElementById('diffTank_' + tankId);
+            
+            if (isNaN(actVol)) {
+                diffCell.innerHTML = '-';
+            } else {
+                const diff = actVol - sysVol;
+                if (diff === 0) {
+                    diffCell.innerHTML = '<span class="text-emerald-500"><i class="fas fa-check"></i> 0</span>';
+                } else if (diff > 0) {
+                    diffCell.innerHTML = `<span class="text-amber-500">+${diff.toLocaleString()}</span>`;
+                } else {
+                    diffCell.innerHTML = `<span class="text-red-500">${diff.toLocaleString()}</span>`;
+                }
+            }
+        });
+    });
+}
+
+function processReconciliation() {
+    const sR40 = parseFloat(document.getElementById('sysRec40').value) || 0;
+    const sD40 = parseFloat(document.getElementById('sysDis40').value) || 0;
+    const sR70 = parseFloat(document.getElementById('sysRec70').value) || 0;
+    const sD70 = parseFloat(document.getElementById('sysDis70').value) || 0;
+    
+    const aR40 = parseFloat(document.getElementById('actRec40').value) || 0;
+    const aD40 = parseFloat(document.getElementById('actDis40').value) || 0;
+    const aR70 = parseFloat(document.getElementById('actRec70').value) || 0;
+    const aD70 = parseFloat(document.getElementById('actDis70').value) || 0;
+    
+    const dateVal = document.getElementById('reconDate').value;
+    const dayTxs = transactions.filter(tx => tx.date === dateVal);
+    
+    let resultsHtml = '';
+    
+    const getTxDeg = (tx) => {
+        const tank = TANK_DEFINITIONS.find(t => t.id === tx.tankId);
+        if (!tank) return '40';
+        return (tank.type || BUILDINGS[tank.b].type) === 'High' ? '70' : '40';
+    };
+    
+    const checkDiff = (sys, act, name, predicate) => {
+        const diff = act - sys;
+        if (diff === 0) {
+            resultsHtml += `<div class="bg-emerald-50 p-3 rounded-lg border border-emerald-200 text-emerald-700 text-sm"><i class="fas fa-check-circle mr-2"></i> <b>${name}</b>: ยอดตรงกัน (${sys.toLocaleString()} L)</div>`;
+            return;
+        }
+        let suggestion = '';
+        if (diff > 0) {
+            suggestion = `ยอดจริงมากกว่าระบบ <b>${diff.toLocaleString()} L</b> (ระบบบันทึกตกหล่น หรือจ่ายเกิน)`;
+            const suspects = dayTxs.filter(tx => tx.volume === diff && !predicate(tx));
+            if (suspects.length > 0) {
+                suggestion += `<br><span class="text-amber-600 mt-1 block"><i class="fas fa-exclamation-triangle"></i> พบยอด ${diff.toLocaleString()} L ไปลงอยู่ในหมวดอื่น: ` + suspects.map(s => `ถัง ${s.tankId} (${s.type})`).join(', ') + `</span>`;
+            } else {
+                suggestion += `<br><span class="text-slate-500 mt-1 block"><i class="fas fa-search"></i> ไม่พบ Transaction ที่ตรงกับยอดนี้ (อาจลืมคีย์เข้าระบบ)</span>`;
+            }
+        } else {
+            const absDiff = Math.abs(diff);
+            suggestion = `ยอดจริงน้อยกว่าระบบ <b>${absDiff.toLocaleString()} L</b> (ระบบบันทึกเกิน หรือซ้ำซ้อน)`;
+            const suspects = dayTxs.filter(tx => tx.volume === absDiff && predicate(tx));
+            if (suspects.length > 0) {
+                suggestion += `<br><span class="text-red-600 mt-1 block"><i class="fas fa-exclamation-circle"></i> พบ Transaction ที่อาจคีย์เกินในหมวดนี้: ` + suspects.map(s => `ถัง ${s.tankId} (${s.type})`).join(', ') + `</span>`;
+            } else {
+                suggestion += `<br><span class="text-slate-500 mt-1 block"><i class="fas fa-search"></i> ไม่พบ Transaction เดี่ยวๆ ที่เท่ากับ ${absDiff.toLocaleString()} L</span>`;
+            }
+        }
+        resultsHtml += `<div class="bg-red-50 p-3 rounded-lg border border-red-200 text-red-800 text-sm"><i class="fas fa-times-circle mr-2"></i> <b>${name}</b>: ${suggestion}</div>`;
+    };
+    
+    const isRec40 = (tx) => ((tx.type === 'IN' || tx.type === 'INITIAL_IN') && getTxDeg(tx) !== '70') || tx.type === 'BLEND_IN';
+    const isDis40 = (tx) => tx.type === 'OUT' && getTxDeg(tx) !== '70';
+    const isRec70 = (tx) => (tx.type === 'IN' || tx.type === 'INITIAL_IN') && getTxDeg(tx) === '70';
+    const isDis70 = (tx) => tx.type === 'BLEND_OUT';
+    
+    checkDiff(sR40, aR40, 'รับน้ำสุรา 40 ดีกรี', isRec40);
+    checkDiff(sD40, aD40, 'จ่ายน้ำสุรา 40 ดีกรี', isDis40);
+    checkDiff(sR70, aR70, 'รับน้ำสุรา 70 ดีกรี', isRec70);
+    checkDiff(sD70, aD70, 'จ่ายน้ำสุรา 70 ดีกรี', isDis70);
+    
+    let tankResultsHtml = '';
+    const tankInputs = document.querySelectorAll('.tank-actual-input');
+    let hasTankDiff = false;
+    
+    tankInputs.forEach(input => {
+        const tankId = input.id.replace('actTank_', '');
+        const sysVol = parseFloat(input.getAttribute('data-sys')) || 0;
+        const actVol = parseFloat(input.value);
+        
+        if (!isNaN(actVol) && actVol !== sysVol) {
+            hasTankDiff = true;
+            const diff = actVol - sysVol;
+            const absDiff = Math.abs(diff);
+            let tankTxs = dayTxs.filter(t => t.tankId === tankId);
+            let suspectHtml = '';
+            
+            if (diff > 0) {
+                let suspects = tankTxs.filter(t => parseFloat(t.volume) === absDiff);
+                if (suspects.length > 0) {
+                    suspectHtml = `ผู้ต้องสงสัย: คีย์จ่ายออกซ้ำซ้อนหรือไม่? (${suspects.map(s => s.type).join(', ')})`;
+                } else {
+                    suspectHtml = `ลืมคีย์รับเข้า ${absDiff.toLocaleString()} L หรือจ่ายออกเกินจริง`;
+                }
+                tankResultsHtml += `<div class="bg-amber-50 p-3 rounded-lg border border-amber-200 text-amber-800 text-sm mt-2"><i class="fas fa-exclamation-triangle mr-2"></i> <b>ถัง ${tankId}</b>: ยอดจริงมากกว่าระบบ ${diff.toLocaleString()} L <br><span class="text-slate-600 mt-1 block"><i class="fas fa-lightbulb"></i> ข้อเสนอแนะ: ${suspectHtml}</span></div>`;
+            } else {
+                let suspects = tankTxs.filter(t => parseFloat(t.volume) === absDiff);
+                if (suspects.length > 0) {
+                    suspectHtml = `ผู้ต้องสงสัย: คีย์รับเข้าซ้ำซ้อนหรือไม่? (${suspects.map(s => s.type).join(', ')})`;
+                } else {
+                    suspectHtml = `ลืมคีย์จ่ายออก ${absDiff.toLocaleString()} L หรือรับเข้าเกินจริง`;
+                }
+                tankResultsHtml += `<div class="bg-red-50 p-3 rounded-lg border border-red-200 text-red-800 text-sm mt-2"><i class="fas fa-exclamation-circle mr-2"></i> <b>ถัง ${tankId}</b>: ยอดจริงน้อยกว่าระบบ ${absDiff.toLocaleString()} L <br><span class="text-slate-600 mt-1 block"><i class="fas fa-lightbulb"></i> ข้อเสนอแนะ: ${suspectHtml}</span></div>`;
+            }
+        }
+    });
+    
+    if (hasTankDiff) {
+        resultsHtml += `<h4 class="font-bold text-slate-700 mt-4 border-b pb-1 mb-2"><i class="fas fa-search"></i> วิเคราะห์ความคลาดเคลื่อนรายถัง</h4>` + tankResultsHtml;
+    }
+    
+    document.getElementById('reconResultsContent').innerHTML = resultsHtml;
+    document.getElementById('reconResults').classList.remove('hidden');
+}
     </script>
+    
+    <!-- Reconcile Modal -->
+    <div id="reconcileModal" class="fixed inset-0 bg-slate-900 bg-opacity-70 hidden z-[90] flex items-center justify-center backdrop-blur-sm">
+        <div class="bg-slate-50 rounded-xl shadow-2xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden">
+            <div class="flex justify-between items-center p-4 bg-white border-b border-slate-200 shadow-sm z-10">
+                <h2 class="text-xl font-bold text-slate-700 flex items-center gap-2"><i class="fas fa-balance-scale text-pink-500"></i> ปรับเทียบยอดและรีเช็ค (Reconciliation)</h2>
+                <button onclick="closeReconcileModal()" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 text-slate-500 hover:text-red-600 transition text-lg font-bold"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="p-4 bg-white border-b border-slate-200 flex justify-center items-center gap-4">
+                <label class="font-bold text-slate-600 text-sm">เลือกวันที่ต้องการตรวจสอบ:</label>
+                <input type="date" id="reconDate" class="border rounded px-3 py-1.5 focus:ring-2 focus:ring-pink-500 outline-none text-slate-700 font-bold" onchange="loadSystemDataForReconcile()">
+            </div>
+            
+            <div class="flex-grow overflow-y-auto p-6 bg-slate-50">
+                <div class="grid grid-cols-2 gap-6">
+                    <!-- System Data -->
+                    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                        <h3 class="text-md font-bold text-indigo-700 mb-4 border-b pb-2"><i class="fas fa-desktop"></i> ยอดน้ำสุราในระบบ (System)</h3>
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm font-bold text-slate-600">รับน้ำสุรา 40 ดีกรี</span>
+                                <input type="number" id="sysRec40" readonly class="bg-slate-100 border border-slate-200 rounded px-2 py-1 text-right font-mono text-slate-500 font-bold w-1/2">
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm font-bold text-slate-600">จ่ายน้ำสุรา 40 ดีกรี</span>
+                                <input type="number" id="sysDis40" readonly class="bg-slate-100 border border-slate-200 rounded px-2 py-1 text-right font-mono text-slate-500 font-bold w-1/2">
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm font-bold text-slate-600">รับน้ำสุรา 70 ดีกรี</span>
+                                <input type="number" id="sysRec70" readonly class="bg-slate-100 border border-slate-200 rounded px-2 py-1 text-right font-mono text-slate-500 font-bold w-1/2">
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm font-bold text-slate-600">จ่ายน้ำสุรา 70 ดีกรี</span>
+                                <input type="number" id="sysDis70" readonly class="bg-slate-100 border border-slate-200 rounded px-2 py-1 text-right font-mono text-slate-500 font-bold w-1/2">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Actual Data -->
+                    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-pink-500">
+                        <h3 class="text-md font-bold text-pink-700 mb-4 border-b pb-2"><i class="fas fa-clipboard-check"></i> ยอดน้ำสุราจริง (Actual)</h3>
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm font-bold text-slate-600">รับน้ำสุรา 40 ดีกรี</span>
+                                <input type="number" id="actRec40" class="border border-pink-200 rounded px-2 py-1 text-right font-mono font-bold text-slate-700 focus:ring-2 focus:ring-pink-500 outline-none w-1/2" placeholder="0">
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm font-bold text-slate-600">จ่ายน้ำสุรา 40 ดีกรี</span>
+                                <input type="number" id="actDis40" class="border border-pink-200 rounded px-2 py-1 text-right font-mono font-bold text-slate-700 focus:ring-2 focus:ring-pink-500 outline-none w-1/2" placeholder="0">
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm font-bold text-slate-600">รับน้ำสุรา 70 ดีกรี</span>
+                                <input type="number" id="actRec70" class="border border-pink-200 rounded px-2 py-1 text-right font-mono font-bold text-slate-700 focus:ring-2 focus:ring-pink-500 outline-none w-1/2" placeholder="0">
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm font-bold text-slate-600">จ่ายน้ำสุรา 70 ดีกรี</span>
+                                <input type="number" id="actDis70" class="border border-pink-200 rounded px-2 py-1 text-right font-mono font-bold text-slate-700 focus:ring-2 focus:ring-pink-500 outline-none w-1/2" placeholder="0">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Tank-by-Tank Balance Check -->
+                <div class="mt-6 bg-white p-5 rounded-xl border border-slate-200 shadow-sm border-t-4 border-t-indigo-500">
+                    <h3 class="text-md font-bold text-indigo-700 mb-4 border-b pb-2"><i class="fas fa-database"></i> ตรวจสอบยอดคงเหลือรายถัง (Tank Balance Check)</h3>
+                    <div id="tankReconContainer" class="space-y-2 max-h-60 overflow-y-auto pr-2">
+                        <!-- Dynamic content -->
+                        <div class="text-slate-500 text-sm text-center py-4">กรุณาเลือกวันที่ เพื่อดึงข้อมูลถังที่มีการเคลื่อนไหว</div>
+                    </div>
+                </div>
+                
+                <div class="mt-6 flex justify-center">
+                    <button onclick="processReconciliation()" class="bg-pink-600 hover:bg-pink-700 text-white font-bold py-3 px-8 rounded-full shadow-lg shadow-pink-200 transition transform hover:scale-105 flex items-center gap-2">
+                        <i class="fas fa-magic"></i> ประมวลผลปรับเทียบยอด
+                    </button>
+                </div>
+                
+                <div id="reconResults" class="mt-8 hidden">
+                    <h3 class="text-lg font-bold text-slate-700 mb-3 border-b pb-2">ผลการประมวลผลความน่าจะเป็น</h3>
+                    <div id="reconResultsContent" class="space-y-3"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
