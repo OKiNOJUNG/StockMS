@@ -1,0 +1,470 @@
+rules_version = '2';
+
+// =============================================================================
+// Assumed Data Model
+// =============================================================================
+//
+// Project: stockms-ac899 (Multi-Tenant Liquor Warehouse Management System)
+//
+// Collection: users
+// Document ID: {username} (lowercase alphanumeric, '-', '_'; 2-32 chars,
+//              e.g., 'admin', 'ms-ssd', 'ms-kkd', 'ms-amd', 'ms-ttd')
+// Fields:
+//   - username: string (required, immutable, must match doc ID)
+//   - displayName: string (required, 1-100 chars)
+//   - role: string (required, enum: 'admin' | 'factory'; immutable for non-admin)
+//   - passwordHash: string (required, 32-256 chars, salted SHA-256 hash)
+//   - salt: string (required, 1-128 chars)
+//   - authUid: string (optional, <= 128 chars, Firebase Auth UID)
+//   - authEmail: string (optional, <= 100 chars, '' or '<username>[.vN]@stockms-ac899.firebaseapp.com')
+//   - authVersion: int (optional, 1-100000, monotonic for non-admin updates)
+//   - active: bool (required, immutable for non-admin; primary 'admin' must remain active)
+//   - createdAt: string (ISO 8601) or timestamp (required, immutable)
+//   - updatedAt: string (ISO 8601) or timestamp (required)
+//   - createdBy: string (required, immutable, 1-64 chars)
+//   - passwordChangedByUserAt: string (ISO 8601) or timestamp (optional)
+//
+// Collection: factories
+// Document ID: {username} (must correspond to an existing/batched /users/{username})
+// Fields:
+//   - username: string (required, immutable, must match doc ID)
+//   - factoryName: string (required, 1-120 chars)
+//   - initialized: bool (required)
+//   - updatedAt: string (ISO 8601) or timestamp (required)
+//   - updatedBy: string (required, 1-64 chars)
+//   - summary: map (optional, <= 60 keys)
+//   - tankConfig: map (optional, <= 1000 keys)
+//   - activeTanks: list (<= 500 items) or map (<= 50 keys) (optional)
+//   - planningData: map (optional, <= 100 keys)
+//   - customTanks: list (optional, <= 1000 items)
+//   - customBuildings: map (optional, <= 100 keys)
+//   - globalSettings: map (optional, <= 50 keys)
+//   - tankSettingsHistory: list (optional, <= 5000 items)
+//   - customQCLimits: map (optional, <= 200 keys)
+//
+// Subcollection: factories/{username}/chunks
+// Document ID: {chunkId} (1-64 chars; parent /factories/{username} must exist)
+// Fields:
+//   - chunkIndex: int (required, 0-10000)
+//   - transactions: list (required, <= 5000 items)
+//   - updatedAt: string (ISO 8601) or timestamp (required)
+//
+// Collection: auditLogs (append-only; updates and deletes forbidden)
+// Document ID: {logId} (1-128 chars)
+// Fields:
+//   - actor: string (required, 1-64 chars)
+//   - target: string (optional, 1-64 chars)
+//   - action: string (required, 1-80 chars)
+//   - timestamp: string (ISO 8601) or timestamp (required)
+//   - details: string (<= 2000 chars) or map (<= 30 keys) (optional)
+//
+// =============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // Default Deny
+    // =========================================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // Standard Helper Functions
+    // =========================================================================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAuthenticated() {
+      return isSignedIn();
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function hasRequiredFields(data, fields) {
+      return data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(data, fields) {
+      return data.keys().hasOnly(fields);
+    }
+
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    function validStringLength(data, field, minLen, maxLen) {
+      return data[field] is string
+        && data[field].size() >= minLen
+        && data[field].size() <= maxLen;
+    }
+
+    function isValidOptionalString(data, field, minLen, maxLen) {
+      return !(field in data)
+        || (data[field] is string
+          && data[field].size() >= minLen
+          && data[field].size() <= maxLen);
+    }
+
+    function isValidEmail(email) {
+      return email is string
+        && email.size() <= 100
+        && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string
+        && dateStr.size() <= 40
+        && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?(Z|[+-]\\d{2}:\\d{2})?$");
+    }
+
+    function isValidTimestampOrDate(val) {
+      return (val is timestamp) || isValidDateString(val);
+    }
+
+    function isValidList(listVal, maxSize) {
+      return listVal is list && listVal.size() <= maxSize;
+    }
+
+    function isValidMap(mapVal, maxKeys) {
+      return mapVal is map && mapVal.size() <= maxKeys;
+    }
+
+    function isValidOptionalList(data, field, maxSize) {
+      return !(field in data) || isValidList(data[field], maxSize);
+    }
+
+    function isValidOptionalMap(data, field, maxKeys) {
+      return !(field in data) || isValidMap(data[field], maxKeys);
+    }
+
+    // =========================================================================
+    // Identity & RBAC Helper Functions
+    // =========================================================================
+
+    function isValidUsername(u) {
+      return u is string
+        && u.size() >= 2
+        && u.size() <= 32
+        && u.matches("^[a-z0-9][a-z0-9_-]{1,31}$");
+    }
+
+    // Safely checks whether the Auth token carries a non-empty email claim
+    // (anonymous auth fallback sessions do not have 'email' in token).
+    function hasTokenEmail() {
+      return isSignedIn()
+        && ('email' in request.auth.token)
+        && request.auth.token.email is string
+        && request.auth.token.email.size() > 0;
+    }
+
+    function hasStockmsTokenEmail() {
+      return hasTokenEmail()
+        && request.auth.token.email.size() <= 100
+        && request.auth.token.email.matches("^[a-z0-9][a-z0-9_-]{1,31}(\\.v[1-9][0-9]*)?@stockms-ac899\\.firebaseapp\\.com$");
+    }
+
+    // Only call when hasStockmsTokenEmail() is true.
+    function tokenEmailUsername() {
+      return request.auth.token.email.split("@")[0].split("\\.v")[0];
+    }
+
+    function isValidAuthEmailForUser(email, username) {
+      return isValidUsername(username)
+        && isValidEmail(email)
+        && email.matches("^" + username + "(\\.v[1-9][0-9]*)?@stockms-ac899\\.firebaseapp\\.com$");
+    }
+
+    // Resolves the currently active Firebase Auth email for a /users/{username} doc.
+    // Checking the stored authEmail revokes prior .v1/.vN emails after admin reset.
+    function expectedUserAuthEmail(userData, username) {
+      return ('authEmail' in userData && userData.authEmail is string && userData.authEmail.size() > 0)
+        ? userData.authEmail
+        : (username + '@stockms-ac899.firebaseapp.com');
+    }
+
+    function isActiveUserData(userData) {
+      return !('active' in userData) || userData.active == true;
+    }
+
+    function isMatchingAdminDoc(userData, username) {
+      return userData != null
+        && ('role' in userData)
+        && userData.role == 'admin'
+        && isActiveUserData(userData)
+        && (
+          (('authUid' in userData)
+            && userData.authUid is string
+            && userData.authUid.size() > 0
+            && isOwner(userData.authUid))
+          || (hasTokenEmail() && expectedUserAuthEmail(userData, username) == request.auth.token.email)
+        );
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        // Bootstrap primary admin before /users/admin is created
+        (hasTokenEmail()
+          && request.auth.token.email == 'admin@stockms-ac899.firebaseapp.com'
+          && !exists(/databases/$(database)/documents/users/admin))
+        // Primary /users/admin lookup (bound authUid or active authEmail)
+        || (exists(/databases/$(database)/documents/users/admin)
+          && isMatchingAdminDoc(get(/databases/$(database)/documents/users/admin).data, 'admin'))
+        // Delegated admin accounts identified by verified StockMS authEmail
+        || (hasStockmsTokenEmail()
+          && exists(/databases/$(database)/documents/users/$(tokenEmailUsername()))
+          && isMatchingAdminDoc(get(/databases/$(database)/documents/users/$(tokenEmailUsername())).data, tokenEmailUsername()))
+      );
+    }
+
+    function isMatchingUserDoc(userData, username) {
+      return userData != null
+        && isActiveUserData(userData)
+        && (
+          (('authUid' in userData)
+            && userData.authUid is string
+            && userData.authUid.size() > 0
+            && isOwner(userData.authUid))
+          || (hasTokenEmail() && expectedUserAuthEmail(userData, username) == request.auth.token.email)
+        );
+    }
+
+    function isUserIdentity(username) {
+      return isSignedIn()
+        && isValidUsername(username)
+        && (
+          exists(/databases/$(database)/documents/users/$(username))
+            ? isMatchingUserDoc(get(/databases/$(database)/documents/users/$(username)).data, username)
+            : (hasTokenEmail() && request.auth.token.email == (username + '@stockms-ac899.firebaseapp.com'))
+        );
+    }
+
+    function hasVerifiedStockmsEmail() {
+      return hasStockmsTokenEmail()
+        && exists(/databases/$(database)/documents/users/$(tokenEmailUsername()))
+        && isMatchingUserDoc(get(/databases/$(database)/documents/users/$(tokenEmailUsername())).data, tokenEmailUsername());
+    }
+
+    // Prevents a factory email session from binding its own authUid to /users/admin
+    // or another tenant during initial default-account seeding.
+    function isValidInitialSeedAuthUid(data, username) {
+      return !('authUid' in data)
+        || data.authUid == ''
+        || (
+          data.authUid == request.auth.uid
+          && (!hasTokenEmail() || request.auth.token.email == (username + '@stockms-ac899.firebaseapp.com'))
+        );
+    }
+
+    // =========================================================================
+    // Domain Validators (Applied on BOTH create and update)
+    // =========================================================================
+
+    function isValidUser(data, username) {
+      return isValidUsername(username)
+        && hasRequiredFields(data, [
+          'username', 'displayName', 'role', 'passwordHash', 'salt',
+          'active', 'createdAt', 'updatedAt', 'createdBy'
+        ])
+        && hasOnlyAllowedFields(data, [
+          'username', 'displayName', 'role', 'passwordHash', 'salt',
+          'authUid', 'authEmail', 'authVersion', 'active',
+          'createdAt', 'updatedAt', 'createdBy', 'passwordChangedByUserAt'
+        ])
+        && data.username is string
+        && data.username == username
+        && validStringLength(data, 'displayName', 1, 100)
+        && data.role in ['admin', 'factory']
+        && validStringLength(data, 'passwordHash', 32, 256)
+        && validStringLength(data, 'salt', 1, 128)
+        && isValidOptionalString(data, 'authUid', 0, 128)
+        && (!('authEmail' in data)
+          || (data.authEmail is string
+            && (data.authEmail == '' || isValidAuthEmailForUser(data.authEmail, username))))
+        && (!('authVersion' in data)
+          || (data.authVersion is int && data.authVersion >= 1 && data.authVersion <= 100000))
+        && data.active is bool
+        && (username != 'admin' || (data.role == 'admin' && data.active == true))
+        && isValidTimestampOrDate(data.createdAt)
+        && isValidTimestampOrDate(data.updatedAt)
+        && validStringLength(data, 'createdBy', 1, 64)
+        && (!('passwordChangedByUserAt' in data) || isValidTimestampOrDate(data.passwordChangedByUserAt));
+    }
+
+    function isValidFactory(data, username) {
+      return isValidUsername(username)
+        && hasRequiredFields(data, [
+          'username', 'factoryName', 'initialized', 'updatedAt', 'updatedBy'
+        ])
+        && hasOnlyAllowedFields(data, [
+          'username', 'factoryName', 'initialized', 'updatedAt', 'updatedBy',
+          'summary', 'tankConfig', 'activeTanks', 'planningData',
+          'customTanks', 'customBuildings', 'globalSettings',
+          'tankSettingsHistory', 'customQCLimits'
+        ])
+        && data.username is string
+        && data.username == username
+        && validStringLength(data, 'factoryName', 1, 120)
+        && data.initialized is bool
+        && isValidTimestampOrDate(data.updatedAt)
+        && validStringLength(data, 'updatedBy', 1, 64)
+        && isValidOptionalMap(data, 'summary', 60)
+        && isValidOptionalMap(data, 'tankConfig', 1000)
+        && (!('activeTanks' in data)
+          || isValidList(data.activeTanks, 500)
+          || isValidMap(data.activeTanks, 50))
+        && isValidOptionalMap(data, 'planningData', 100)
+        && isValidOptionalList(data, 'customTanks', 1000)
+        && isValidOptionalMap(data, 'customBuildings', 100)
+        && isValidOptionalMap(data, 'globalSettings', 50)
+        && isValidOptionalList(data, 'tankSettingsHistory', 5000)
+        && isValidOptionalMap(data, 'customQCLimits', 200);
+    }
+
+    function isValidChunk(data) {
+      return hasRequiredFields(data, ['chunkIndex', 'transactions', 'updatedAt'])
+        && hasOnlyAllowedFields(data, ['chunkIndex', 'transactions', 'updatedAt'])
+        && data.chunkIndex is int
+        && data.chunkIndex >= 0
+        && data.chunkIndex <= 10000
+        && isValidList(data.transactions, 5000)
+        && isValidTimestampOrDate(data.updatedAt);
+    }
+
+    function isValidAuditLog(data) {
+      return hasRequiredFields(data, ['actor', 'action', 'timestamp'])
+        && hasOnlyAllowedFields(data, ['actor', 'target', 'action', 'timestamp', 'details'])
+        && validStringLength(data, 'actor', 1, 64)
+        && isValidOptionalString(data, 'target', 1, 64)
+        && validStringLength(data, 'action', 1, 80)
+        && isValidTimestampOrDate(data.timestamp)
+        && (!('details' in data)
+          || (data.details is string && data.details.size() <= 2000)
+          || isValidMap(data.details, 30));
+    }
+
+    // =========================================================================
+    // Collection Rules
+    // =========================================================================
+
+    // 1. /users/{username}
+    match /users/{username} {
+      // Authenticated client reads user profile/salt/authVersion/role during
+      // login and admin management (never store plaintext passwords here).
+      allow read: if isSignedIn();
+
+      // Admins can create any valid user. Non-admins can only perform initial
+      // default seeding for the 5 built-in accounts with fixed role mapping.
+      allow create: if isSignedIn()
+        && isValidUser(request.resource.data, username)
+        && (
+          isAdmin()
+          || (
+            username in ['admin', 'ms-ssd', 'ms-kkd', 'ms-amd', 'ms-ttd']
+            && !exists(/databases/$(database)/documents/users/$(username))
+            && request.resource.data.role == (username == 'admin' ? 'admin' : 'factory')
+            && isValidInitialSeedAuthUid(request.resource.data, username)
+          )
+        );
+
+      // Admins can update users; active factory users can update only their own
+      // credential/binding fields without changing role, username, or active state.
+      allow update: if isSignedIn()
+        && isValidUser(request.resource.data, username)
+        && areImmutableFieldsUnchanged(['username', 'createdAt', 'createdBy'])
+        && (
+          isAdmin()
+          || (
+            isUserIdentity(username)
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.username == resource.data.username
+            && request.resource.data.active == resource.data.active
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'passwordHash', 'salt', 'authUid', 'authEmail',
+              'authVersion', 'updatedAt', 'passwordChangedByUserAt'
+            ])
+            && (
+              (!('authUid' in resource.data) && !('authUid' in request.resource.data))
+              || (('authUid' in resource.data) && ('authUid' in request.resource.data) && request.resource.data.authUid == resource.data.authUid)
+              || (('authUid' in request.resource.data) && request.resource.data.authUid == request.auth.uid)
+            )
+            && (!('authVersion' in resource.data)
+              || (('authVersion' in request.resource.data) && request.resource.data.authVersion >= resource.data.authVersion))
+            && (
+              !('authEmail' in resource.data)
+              || (('authEmail' in request.resource.data) && request.resource.data.authEmail == resource.data.authEmail)
+              || (('authVersion' in request.resource.data)
+                && (!('authVersion' in resource.data) || request.resource.data.authVersion > resource.data.authVersion))
+            )
+          )
+        );
+
+      allow delete: if isAdmin() && username != 'admin';
+    }
+
+    // 2. /factories/{username}
+    match /factories/{username} {
+      allow read: if isAdmin() || isUserIdentity(username);
+
+      allow create: if (isAdmin() || isUserIdentity(username))
+        && (exists(/databases/$(database)/documents/users/$(username))
+          || existsAfter(/databases/$(database)/documents/users/$(username)))
+        && isValidFactory(request.resource.data, username);
+
+      allow update: if (isAdmin() || isUserIdentity(username))
+        && (exists(/databases/$(database)/documents/users/$(username))
+          || existsAfter(/databases/$(database)/documents/users/$(username)))
+        && areImmutableFieldsUnchanged(['username'])
+        && isValidFactory(request.resource.data, username);
+
+      allow delete: if isAdmin() || isUserIdentity(username);
+
+      // 3. /factories/{username}/chunks/{chunkId}
+      match /chunks/{chunkId} {
+        allow read: if isAdmin() || isUserIdentity(username);
+
+        allow create, update: if (isAdmin() || isUserIdentity(username))
+          && chunkId.size() >= 1 && chunkId.size() <= 64
+          && (exists(/databases/$(database)/documents/factories/$(username))
+            || existsAfter(/databases/$(database)/documents/factories/$(username)))
+          && isValidChunk(request.resource.data);
+
+        allow delete: if isAdmin() || isUserIdentity(username);
+      }
+    }
+
+    // 4. /auditLogs/{logId}
+    match /auditLogs/{logId} {
+      allow get: if isAdmin()
+        || (isSignedIn() && (
+          ('actor' in resource.data && resource.data.actor is string && isUserIdentity(resource.data.actor))
+          || ('target' in resource.data && resource.data.target is string && isUserIdentity(resource.data.target))
+        ));
+
+      allow list: if isAdmin()
+        || (isSignedIn() && hasVerifiedStockmsEmail() && (
+          ('actor' in resource.data && resource.data.actor == tokenEmailUsername())
+          || ('target' in resource.data && resource.data.target == tokenEmailUsername())
+        ));
+
+      allow create: if isSignedIn()
+        && logId.size() >= 1 && logId.size() <= 128
+        && isValidAuditLog(request.resource.data)
+        && (
+          isAdmin()
+          || isUserIdentity(request.resource.data.actor)
+          || (!hasTokenEmail() && (
+            request.resource.data.actor != 'admin'
+            || !exists(/databases/$(database)/documents/users/admin)
+          ))
+        );
+
+      allow update, delete: if false;
+    }
+  }
+}

@@ -1,0 +1,1170 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SYSTEM DESIGN — StockMS Cloud</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap"
+        rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Sarabun', sans-serif;
+            background: #f8fafc;
+            color: #0f172a;
+        }
+
+        code,
+        pre,
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 1.25rem;
+            box-shadow: 0 8px 24px -10px rgba(15, 23, 42, 0.08);
+        }
+
+        .section-anchor {
+            scroll-margin-top: 5.5rem;
+        }
+
+        .nav-pill {
+            white-space: nowrap;
+            transition: all 0.15s ease;
+        }
+
+        .nav-pill.active,
+        .nav-pill:hover {
+            background: #2563eb;
+            color: #ffffff;
+            border-color: #2563eb;
+        }
+
+        .badge-high {
+            background: #fee2e2;
+            color: #b91c1c;
+            border: 1px solid #fecaca;
+        }
+
+        .badge-med {
+            background: #fef3c7;
+            color: #b45309;
+            border: 1px solid #fde68a;
+        }
+
+        .badge-low {
+            background: #dbeafe;
+            color: #1d4ed8;
+            border: 1px solid #bfdbfe;
+        }
+
+        .badge-ok {
+            background: #dcfce7;
+            color: #15803d;
+            border: 1px solid #bbf7d0;
+        }
+
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+
+            .card {
+                box-shadow: none !important;
+                break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+
+<body class="antialiased">
+    <!-- Top Sticky Bar -->
+    <header class="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 no-print">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <div
+                    class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow">
+                    <i class="fas fa-sitemap text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="text-base sm:text-lg font-extrabold text-slate-900 leading-tight">SYSTEM DESIGN — StockMS
+                        Cloud</h1>
+                    <p class="text-xs text-slate-500 font-semibold">สถาปัตยกรรมระบบ Multi-Tenant Cloud Platform, กฎเกณฑ์
+                        และรายงานแก้บัค</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+                <a href="index.html"
+                    class="px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200">
+                    <i class="fas fa-warehouse mr-1"></i> Stock Control
+                </a>
+                <a href="dashboard.html"
+                    class="px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200">
+                    <i class="fas fa-chart-pie mr-1"></i> Dashboard
+                </a>
+                <button onclick="toggleDocFullscreen()"
+                    class="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 cursor-pointer">
+                    <i class="fas fa-expand mr-1" id="docFsIcon"></i> เต็มจอ
+                </button>
+                <button onclick="window.print()"
+                    class="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white cursor-pointer">
+                    <i class="fas fa-print mr-1"></i> พิมพ์ / PDF
+                </button>
+            </div>
+        </div>
+        <!-- Sub Navigation -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 pb-2.5 flex items-center gap-1.5 overflow-x-auto text-xs font-bold">
+            <a href="#sec-overview"
+                class="nav-pill px-3 py-1 rounded-full border border-slate-200 bg-white text-slate-600">1. ภาพรวม &amp;
+                การเชื่อมโยง</a>
+            <a href="#sec-auth"
+                class="nav-pill px-3 py-1 rounded-full border border-slate-200 bg-white text-slate-600">2. Auth &amp;
+                แยกโรงงาน</a>
+            <a href="#sec-schema"
+                class="nav-pill px-3 py-1 rounded-full border border-slate-200 bg-white text-slate-600">3. ฐานข้อมูล
+                &amp; Security Rules</a>
+            <a href="#sec-admin"
+                class="nav-pill px-3 py-1 rounded-full border border-slate-200 bg-white text-slate-600">4. สิทธิ์ Admin
+                &amp; คำแนะนำ</a>
+            <a href="#sec-rules"
+                class="nav-pill px-3 py-1 rounded-full border border-slate-200 bg-white text-slate-600">5. กฎธุรกิจ
+                &amp; ข้อจำกัด</a>
+            <a href="#sec-audit"
+                class="nav-pill px-3 py-1 rounded-full border border-slate-200 bg-white text-rose-700">6. บัค &amp;
+                ช่องโหว่ที่แก้ไข (High → Low)</a>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-8">
+        <!-- KPI Summary Strip -->
+        <section class="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+            <div class="card p-4 border-l-4 border-l-blue-600">
+                <div class="text-xs font-bold text-slate-500">แพลตฟอร์มฐานข้อมูลกลาง</div>
+                <div class="text-lg sm:text-xl font-black text-slate-900 mt-1 mono">Cloud Sync Engine</div>
+                <div class="text-[11px] text-blue-600 font-semibold mt-0.5">Auth + Document Store + Rules</div>
+            </div>
+            <div class="card p-4 border-l-4 border-l-emerald-600">
+                <div class="text-xs font-bold text-slate-500">บัญชีเริ่มต้น (Seeded Users)</div>
+                <div class="text-lg sm:text-xl font-black text-slate-900 mt-1">5 บัญชี (1 Admin + 4 โรงงาน)</div>
+                <div class="text-[11px] text-emerald-700 font-semibold mt-0.5">admin, ms-ssd, ms-kkd, ms-amd, ms-ttd
+                </div>
+            </div>
+            <div class="card p-4 border-l-4 border-l-indigo-600">
+                <div class="text-xs font-bold text-slate-500">การแยกข้อมูลต่อโรงงาน</div>
+                <div class="text-lg sm:text-xl font-black text-slate-900 mt-1">9 Keys + Chunks (350/Doc)</div>
+                <div class="text-[11px] text-indigo-700 font-semibold mt-0.5">Pre-Hydration ระดับ &lt;head&gt;
+                    ป้องกันข้ามโรงงาน</div>
+            </div>
+            <div class="card p-4 border-l-4 border-l-rose-600">
+                <div class="text-xs font-bold text-slate-500">บัค &amp; ความปลอดภัยที่ตรวจแก้แล้ว</div>
+                <div class="text-lg sm:text-xl font-black text-slate-900 mt-1">16 รายการ (ครบทุกความเสี่ยง)</div>
+                <div class="text-[11px] text-rose-700 font-semibold mt-0.5">High 5 • Medium 8 • Low 3</div>
+            </div>
+        </section>
+
+        <!-- SECTION 1: Architecture & Linkage Diagram -->
+        <section id="sec-overview" class="card p-5 sm:p-7 section-anchor">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-5 pb-3 border-b border-slate-100">
+                <div>
+                    <span class="text-[11px] font-extrabold uppercase tracking-wider text-blue-600">Section 01 • System
+                        Architecture</span>
+                    <h2 class="text-xl font-black text-slate-900">1. ภาพรวมสถาปัตยกรรมและจุดเชื่อมโยงของระบบทั้งหมด</h2>
+                </div>
+                <span class="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700">Client-Serverless
+                    Hybrid Sync</span>
+            </div>
+
+            <!-- Interactive SVG Architecture Diagram -->
+            <div class="overflow-x-auto bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-6">
+                <svg viewBox="0 0 1120 430" class="w-full min-w-[780px] h-auto" role="img"
+                    aria-label="StockMS Cloud System Linkage Diagram">
+                    <defs>
+                        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7"
+                            orient="auto-start-reverse">
+                            <path d="M 0 1 L 10 5 L 0 9 z" fill="#475569" />
+                        </marker>
+                        <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7"
+                            orient="auto-start-reverse">
+                            <path d="M 0 1 L 10 5 L 0 9 z" fill="#2563eb" />
+                        </marker>
+                        <marker id="arrowEmerald" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7"
+                            orient="auto-start-reverse">
+                            <path d="M 0 1 L 10 5 L 0 9 z" fill="#059669" />
+                        </marker>
+                    </defs>
+
+                    <!-- Column Backgrounds -->
+                    <rect x="15" y="15" width="305" height="400" rx="18" fill="#eff6ff" stroke="#bfdbfe"
+                        stroke-width="1.5" />
+                    <text x="32" y="42" font-size="13" font-weight="800" fill="#1e40af">PRESENTATION LAYER (UI)</text>
+
+                    <rect x="355" y="15" width="380" height="400" rx="18" fill="#eef2ff" stroke="#c7d2fe"
+                        stroke-width="1.5" />
+                    <text x="372" y="42" font-size="13" font-weight="800" fill="#3730a3">CORE MULTI-TENANT ENGINE
+                        (Shared JS)</text>
+
+                    <rect x="770" y="15" width="335" height="400" rx="18" fill="#ecfdf5" stroke="#a7f3d0"
+                        stroke-width="1.5" />
+                    <text x="787" y="42" font-size="13" font-weight="800" fill="#065f46">CLOUD PLATFORM
+                        (MULTI-TENANT)</text>
+
+                    <!-- Presentation Boxes -->
+                    <rect x="35" y="65" width="265" height="92" rx="12" fill="#ffffff" stroke="#3b82f6"
+                        stroke-width="2" />
+                    <text x="50" y="90" font-size="14" font-weight="800" fill="#0f172a">index.html (Stock
+                        Control)</text>
+                    <text x="50" y="110" font-size="11" fill="#475569">• รับ-จ่าย, โอนถัง, ปรุงสุรา (FIFO)</text>
+                    <text x="50" y="126" font-size="11" fill="#475569">• Daily Report, Reconcile, Master Setup</text>
+                    <text x="50" y="142" font-size="11" fill="#2563eb" font-weight="700">Hook: saveData() + escapeHtml()
+                        + Broadcast</text>
+
+                    <rect x="35" y="175" width="265" height="95" rx="12" fill="#ffffff" stroke="#6366f1"
+                        stroke-width="2" />
+                    <text x="50" y="200" font-size="14" font-weight="800" fill="#0f172a">dashboard.html (Executive &amp;
+                        QC)</text>
+                    <text x="50" y="220" font-size="11" fill="#475569">• 7-Day Readiness, Radar, Tank Heatmap</text>
+                    <text x="50" y="236" font-size="11" fill="#475569">• QC Anomaly Monitor &amp; มอก. Custom
+                        Limits</text>
+                    <text x="50" y="252" font-size="11" fill="#4f46e5" font-weight="700">Auth:
+                        verifyCurrentOrAdminPassword()</text>
+
+                    <rect x="35" y="288" width="265" height="108" rx="12" fill="#ffffff" stroke="#0ea5e9"
+                        stroke-width="2" />
+                    <text x="50" y="313" font-size="14" font-weight="800" fill="#0f172a">mobile-kosmate.css (KosMate
+                        UI)</text>
+                    <text x="50" y="333" font-size="11" fill="#475569">• KosMate Login Card &amp; First-Time
+                        Setup</text>
+                    <text x="50" y="349" font-size="11" fill="#475569">• #kosmateMobileShell (Hero + 4x2 Grid)</text>
+                    <text x="50" y="365" font-size="11" fill="#475569">• 5-Slot Bottom Nav + Floating + FAB</text>
+                    <text x="50" y="381" font-size="11" fill="#0284c7" font-weight="700">• Responsive Zero-Overlap +
+                        Fullscreen</text>
+
+                    <!-- Core Engine Boxes -->
+                    <rect x="375" y="65" width="340" height="72" rx="12" fill="#ffffff" stroke="#4f46e5"
+                        stroke-width="2" />
+                    <text x="390" y="88" font-size="13" font-weight="800" fill="#0f172a">&lt;head&gt; Synchronous
+                        Pre-Hydration</text>
+                    <text x="390" y="106" font-size="11" fill="#475569">preHydrateBeforeBodyScripts() อ่าน
+                        Session</text>
+                    <text x="390" y="122" font-size="11" fill="#475569">โหลด stockms_tenant::{id}::* ก่อน inline
+                        &lt;script&gt;</text>
+
+                    <rect x="375" y="152" width="340" height="82" rx="12" fill="#ffffff" stroke="#2563eb"
+                        stroke-width="2" />
+                    <text x="390" y="175" font-size="13" font-weight="800" fill="#0f172a">StockMSAuth &amp; Admin
+                        Provisioning</text>
+                    <text x="390" y="193" font-size="11" fill="#475569">• Salted SHA-256 (64 rounds) + Derived Auth
+                        Secret</text>
+                    <text x="390" y="209" font-size="11" fill="#475569">• Secondary App (StockMSSecondaryAuth)
+                        สร้าง/รีเซ็ต User</text>
+                    <text x="390" y="225" font-size="11" fill="#475569">• changeOwnPassword() + Onboarding
+                        (Import/Fresh)</text>
+
+                    <rect x="375" y="248" width="340" height="74" rx="12" fill="#ffffff" stroke="#0d9488"
+                        stroke-width="2" />
+                    <text x="390" y="271" font-size="13" font-weight="800" fill="#0f172a">Chunk Sync &amp;
+                        BroadcastChannel Guard</text>
+                    <text x="390" y="289" font-size="11" fill="#475569">• Debounced save (450ms) แบ่ง Chunk ละ 350
+                        รายการ</text>
+                    <text x="390" y="305" font-size="11" fill="#475569">• BroadcastChannel('blending_stock_sync') กรอง
+                        factoryId</text>
+
+                    <rect x="375" y="336" width="340" height="60" rx="12" fill="#ffffff" stroke="#d97706"
+                        stroke-width="2" />
+                    <text x="390" y="357" font-size="12.5" font-weight="800" fill="#0f172a">Analytics, Real-Time Logs
+                        &amp; Rollback</text>
+                    <text x="390" y="376" font-size="10.5" fill="#475569">เปรียบเทียบทุกโรงงาน + Activity Stream สด +
+                        ย้อน Log</text>
+
+                    <!-- Cloud Boxes -->
+                    <rect x="790" y="65" width="295" height="70" rx="12" fill="#ffffff" stroke="#059669"
+                        stroke-width="2" />
+                    <text x="805" y="88" font-size="13" font-weight="800" fill="#0f172a">Cloud Auth Engine</text>
+                    <text x="805" y="106" font-size="11" fill="#475569">Identity: {user}[.vN]@internal-cloud-auth</text>
+                    <text x="805" y="122" font-size="11" fill="#475569">+ Fallback Session + Persistent Token</text>
+
+                    <rect x="790" y="148" width="295" height="170" rx="12" fill="#ffffff" stroke="#059669"
+                        stroke-width="2" />
+                    <text x="805" y="171" font-size="13" font-weight="800" fill="#0f172a">Cloud Document Store</text>
+                    <text x="805" y="191" font-size="11" fill="#0f172a" font-weight="700">1. /users/{username}</text>
+                    <text x="805" y="207" font-size="10.5" fill="#475569">role, passwordHash, salt, authUid,
+                        authVersion</text>
+                    <text x="805" y="227" font-size="11" fill="#0f172a" font-weight="700">2.
+                        /factories/{username}</text>
+                    <text x="805" y="243" font-size="10.5" fill="#475569">initialized, summary, customTanks, settings,
+                        QC</text>
+                    <text x="805" y="263" font-size="11" fill="#0f172a" font-weight="700">3.
+                        /factories/{u}/chunks/chunk_{i} &amp; snap_*</text>
+                    <text x="805" y="279" font-size="10.5" fill="#475569">transactions[0..349] + Snapshot
+                        Rollback</text>
+                    <text x="805" y="299" font-size="11" fill="#0f172a" font-weight="700">4. /auditLogs/{logId}</text>
+                    <text x="805" y="313" font-size="10.5" fill="#475569">Append-only Real-Time Stream + Snapshot</text>
+
+                    <rect x="790" y="332" width="295" height="64" rx="12" fill="#064e3b" stroke="#047857"
+                        stroke-width="2" />
+                    <text x="805" y="355" font-size="13" font-weight="800" fill="#ffffff">Cloud Security &amp; Schema
+                        Rules</text>
+                    <text x="805" y="373" font-size="11" fill="#a7f3d0">RBAC Strict Enforcement • Default Deny • Schema
+                        Check</text>
+
+                    <!-- Connectors -->
+                    <line x1="300" y1="101" x2="373" y2="101" stroke="#2563eb" stroke-width="2"
+                        marker-end="url(#arrowBlue)" />
+                    <line x1="300" y1="210" x2="373" y2="193" stroke="#2563eb" stroke-width="2"
+                        marker-end="url(#arrowBlue)" />
+                    <line x1="300" y1="130" x2="373" y2="280" stroke="#0d9488" stroke-width="2"
+                        marker-end="url(#arrow)" />
+                    <line x1="300" y1="345" x2="373" y2="365" stroke="#475569" stroke-width="1.8" stroke-dasharray="4 3"
+                        marker-end="url(#arrow)" />
+
+                    <line x1="715" y1="190" x2="788" y2="100" stroke="#059669" stroke-width="2"
+                        marker-end="url(#arrowEmerald)" />
+                    <line x1="715" y1="285" x2="788" y2="235" stroke="#059669" stroke-width="2"
+                        marker-end="url(#arrowEmerald)" />
+                    <line x1="715" y1="365" x2="788" y2="285" stroke="#059669" stroke-width="1.8"
+                        marker-end="url(#arrowEmerald)" />
+                    <line x1="937" y1="330" x2="937" y2="319" stroke="#059669" stroke-width="2"
+                        marker-end="url(#arrowEmerald)" />
+                </svg>
+            </div>
+
+            <!-- File Linkage Table -->
+            <div class="overflow-x-auto rounded-2xl border border-slate-200">
+                <table class="w-full text-xs sm:text-sm text-left">
+                    <thead class="bg-slate-100 text-slate-700 font-bold">
+                        <tr>
+                            <th class="px-4 py-3">ไฟล์ในระบบ</th>
+                            <th class="px-4 py-3">หน้าที่หลัก (Responsibility)</th>
+                            <th class="px-4 py-3">จุดเชื่อมโยงสำคัญ (Integration Points)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        <tr>
+                            <td class="px-4 py-3 font-bold text-blue-700 mono">index.html</td>
+                            <td class="px-4 py-3">หน้าปฏิบัติการคลังสุรา (รับเข้า, จ่าย/บรรจุ, โอนย้าย, ปรุงสุรา,
+                                รายงานประจำวัน, ปรับเทียบยอด, Master Setup)</td>
+                            <td class="px-4 py-3">โหลด Cloud SDK + <code>mobile-kosmate.css</code> + โมดูลซิงค์กลางใน
+                                <code>&lt;head&gt;</code>; ครอบฟังก์ชัน <code>saveData()</code> และผูก
+                                <code>BroadcastChannel('blending_stock_sync')</code>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="px-4 py-3 font-bold text-indigo-700 mono">dashboard.html</td>
+                            <td class="px-4 py-3">Executive Dashboard, กราฟคาดการณ์ครบอายุบ่ม 7 วัน, Heatmap ถัง, และ QC
+                                Anomaly Monitor (มอก.)</td>
+                            <td class="px-4 py-3">อ่านข้อมูลที่แยกโรงงานแล้วจาก Pre-Hydration; ปลดล็อก Power User ผ่าน
+                                <code>StockMSAuth.verifyCurrentOrAdminPassword()</code>; ผูกปุ่ม Sync และ QC Limits Sync
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="px-4 py-3 font-bold text-emerald-700 mono">Cloud Sync Module</td>
+                            <td class="px-4 py-3">สมองกลาง Multi-Tenant Auth, First-Time Setup, Password Change, Admin
+                                Suite, Cloud Chunk Sync, KosMate Mobile Shell</td>
+                            <td class="px-4 py-3">เชื่อมต่อแพลตฟอร์มฐานข้อมูลกลาง, บริหาร
+                                <code>stockms_tenant::&lt;user&gt;::*</code>, ใช้ Secondary Auth Session สร้างบัญชี,
+                                คำนวณวิเคราะห์และคำแนะนำทุกโรงงาน
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="px-4 py-3 font-bold text-sky-700 mono">mobile-kosmate.css</td>
+                            <td class="px-4 py-3">UI หน้าล็อกอิน &amp; แอปมือถือทรง KosMate, Bottom Nav 5 ช่อง + ปุ่ม
+                                <code>+</code> ลอย, การ์ด Modal และ Responsive Fixes
+                            </td>
+                            <td class="px-4 py-3">สลับ Layout มือถือ (<code>&lt;= 900px</code> หรือโหมด
+                                <code>.kosmate-force-mobile</code>) และ Desktop พร้อมย้าย Toast เหนือ Bottom Nav
+                                ป้องกันปุ่มโดนบัง
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="px-4 py-3 font-bold text-rose-700 mono">Cloud Security Rules<br>&amp; Deployment
+                                Config</td>
+                            <td class="px-4 py-3">กฎความปลอดภัยระดับฐานข้อมูลกลาง, Access Policies และ Deployment Config
+                            </td>
+                            <td class="px-4 py-3">ตรวจ Schema 13 ฟิลด์บน <code>/users</code>, 14 ฟิลด์บน
+                                <code>/factories</code>, ป้องกัน Non-Admin อ่าน/เขียนโรงงานอื่น และบังคับ
+                                <code>auditLogs</code> เขียนเพิ่มอย่างเดียว
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- SECTION 2: Auth, Initial Accounts & Multi-Tenant Flow -->
+        <section id="sec-auth" class="card p-5 sm:p-7 section-anchor">
+            <div class="mb-5 pb-3 border-b border-slate-100">
+                <span class="text-[11px] font-extrabold uppercase tracking-wider text-indigo-600">Section 02 • Identity
+                    &amp; Isolation Flow</span>
+                <h2 class="text-xl font-black text-slate-900">2. ระบบ Login, บัญชีเริ่มต้น, Onboarding แรกเข้า และ
+                    Pre-Hydration</h2>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <!-- Seeded Accounts -->
+                <div class="lg:col-span-6">
+                    <h3 class="text-sm font-extrabold text-slate-800 mb-2.5"><i
+                            class="fas fa-users text-blue-600 mr-1.5"></i> บัญชีผู้ใช้งานเริ่มต้นที่ Seed เข้าสู่ระบบ (5
+                        บัญชี)</h3>
+                    <div class="overflow-x-auto rounded-2xl border border-slate-200">
+                        <table class="w-full text-xs text-left">
+                            <thead class="bg-slate-100 font-bold text-slate-700">
+                                <tr>
+                                    <th class="px-3.5 py-2.5">Username</th>
+                                    <th class="px-3.5 py-2.5">Password เริ่มต้น</th>
+                                    <th class="px-3.5 py-2.5">Role</th>
+                                    <th class="px-3.5 py-2.5">ขอบเขตข้อมูล (Tenant)</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                <tr class="bg-slate-900 text-white">
+                                    <td class="px-3.5 py-2.5 font-bold mono">admin</td>
+                                    <td class="px-3.5 py-2.5 mono">admin321</td>
+                                    <td class="px-3.5 py-2.5"><span
+                                            class="px-2 py-0.5 rounded-full bg-amber-400 text-slate-900 text-[10px] font-black">admin</span>
+                                    </td>
+                                    <td class="px-3.5 py-2.5">จัดการทุก User + ดู/เปรียบเทียบทุกโรงงาน</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-3.5 py-2.5 font-bold mono text-blue-700">ms-ssd</td>
+                                    <td class="px-3.5 py-2.5 mono">msssd</td>
+                                    <td class="px-3.5 py-2.5"><span
+                                            class="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold">factory</span>
+                                    </td>
+                                    <td class="px-3.5 py-2.5">คลังโรงงาน MS-SSD (แยก 100%)</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-3.5 py-2.5 font-bold mono text-emerald-700">ms-kkd</td>
+                                    <td class="px-3.5 py-2.5 mono">mskkd</td>
+                                    <td class="px-3.5 py-2.5"><span
+                                            class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">factory</span>
+                                    </td>
+                                    <td class="px-3.5 py-2.5">คลังโรงงาน MS-KKD (แยก 100%)</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-3.5 py-2.5 font-bold mono text-amber-700">ms-amd</td>
+                                    <td class="px-3.5 py-2.5 mono">msamd</td>
+                                    <td class="px-3.5 py-2.5"><span
+                                            class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold">factory</span>
+                                    </td>
+                                    <td class="px-3.5 py-2.5">คลังโรงงาน MS-AMD (แยก 100%)</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-3.5 py-2.5 font-bold mono text-purple-700">ms-ttd</td>
+                                    <td class="px-3.5 py-2.5 mono">msttd</td>
+                                    <td class="px-3.5 py-2.5"><span
+                                            class="px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 text-[10px] font-bold">factory</span>
+                                    </td>
+                                    <td class="px-3.5 py-2.5">คลังโรงงาน MS-TTD (แยก 100%)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="text-[11px] text-slate-500 mt-2">
+                        <i class="fas fa-lock mr-1 text-emerald-600"></i> รหัสผ่านทั้งหมดถูก Hash ด้วย <b>64-Round
+                            Salted SHA-256</b> ไม่เก็บ Plaintext ลงใน Cloud Document Store และทุก User มีปุ่ม
+                        <b>เปลี่ยนรหัสผ่านด้วยตนเอง</b> บน Navbar และหน้าโปรไฟล์มือถือ
+                    </p>
+                </div>
+
+                <!-- Sequence Steps -->
+                <div class="lg:col-span-6 space-y-3">
+                    <h3 class="text-sm font-extrabold text-slate-800"><i
+                            class="fas fa-route text-indigo-600 mr-1.5"></i>
+                        ลำดับการทำงานตั้งแต่เปิดหน้าเว็บจนซิงค์ข้อมูล</h3>
+                    <div class="space-y-2 text-xs">
+                        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 flex gap-3">
+                            <span
+                                class="w-6 h-6 rounded-full bg-blue-600 text-white font-black flex items-center justify-center flex-shrink-0">1</span>
+                            <div>
+                                <b>Pre-Hydration ใน &lt;head&gt; (Synchronous):</b> ก่อนสคริปต์ของหน้าเว็บจะทำงาน
+                                <code>preHydrateBeforeBodyScripts()</code> ตรวจ Session ปัจจุบัน ถ้ายังไม่ Login จะล้าง
+                                working <code>localStorage</code>; ถ้า Login แล้วจะคัดลอกค่าจาก
+                                <code>stockms_tenant::{factoryId}::*</code> ลง working keys ทันที
+                            </div>
+                        </div>
+                        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 flex gap-3">
+                            <span
+                                class="w-6 h-6 rounded-full bg-blue-600 text-white font-black flex items-center justify-center flex-shrink-0">2</span>
+                            <div>
+                                <b>Authentication Gate:</b> ล็อกหน้าจอหลักด้วยคลาส <code>.stockms-locked</code> (Blur +
+                                Disable) เมื่อผู้ใช้กรอก User/Pass ระบบพิสูจน์ตัวตนกับ Cloud Auth Engine (Credential
+                                เวอร์ชันล่าสุด + Secondary Fallback Token) และเทียบ Salted SHA-256 กับคอลเลกชัน
+                                <code>/users/{username}</code>
+                            </div>
+                        </div>
+                        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 flex gap-3">
+                            <span
+                                class="w-6 h-6 rounded-full bg-emerald-600 text-white font-black flex items-center justify-center flex-shrink-0">3</span>
+                            <div>
+                                <b>First-Time Onboarding (โรงงานใหม่):</b> หากโรงงานที่เข้ามามี
+                                <code>initialized === false</code> ระบบจะเด้งหน้าต่างบังคับเลือก: <b>(ก) นำเข้าไฟล์
+                                    Backup JSON</b> (พร้อมแปลงชื่ออาคารเก่า <code>B_70_Large/B_70/B_40</code> และโหลด QC
+                                Limits) หรือ <b>(ข) เริ่มต้นฐานข้อมูลใหม่</b> ด้วยถังมาตรฐานแล้วซิงค์ขึ้น Cloud ทันที
+                            </div>
+                        </div>
+                        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 flex gap-3">
+                            <span
+                                class="w-6 h-6 rounded-full bg-indigo-600 text-white font-black flex items-center justify-center flex-shrink-0">4</span>
+                            <div>
+                                <b>Two-Way Real-Time Sync:</b> ทุกการเรียก <code>saveData()</code> จะตั้ง Debounce 450ms
+                                อัปโหลด Document + Chunk ละ 350 รายการขึ้นฐานข้อมูลกลาง พร้อมเปิด Real-Time Listener
+                                รับอัปเดตจากเครื่องอื่นอัตโนมัติ (กรอง Timestamp &gt; 1.5s และ <code>factoryId</code> บน
+                                <code>BroadcastChannel</code>)
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 3: Cloud Schema & Security Rules -->
+        <section id="sec-schema" class="card p-5 sm:p-7 section-anchor">
+            <div class="mb-5 pb-3 border-b border-slate-100">
+                <span class="text-[11px] font-extrabold uppercase tracking-wider text-emerald-600">Section 03 • Cloud
+                    Data Model &amp; RBAC</span>
+                <h2 class="text-xl font-black text-slate-900">3. โครงสร้างฐานข้อมูลกลาง &amp; กฎความปลอดภัย (<code
+                        class="text-rose-600">Cloud Security Rules</code>)</h2>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-black text-slate-900 mono">/users/{username}</span>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700">13
+                            Allowed Fields Strictly</span>
+                    </div>
+                    <p class="text-xs text-slate-600 mb-2">Doc ID ต้องตรงกับ Regex
+                        <code>^[a-z0-9][a-z0-9_-]{1,31}$</code> (ยาว 2–32 ตัวอักษร)
+                    </p>
+                    <div
+                        class="text-[11px] mono bg-white p-2.5 rounded-xl border border-slate-200 text-slate-700 leading-relaxed">
+                        <b>Required (9):</b> username, displayName, role ('admin'|'factory'), passwordHash, salt, active
+                        (bool), createdAt, updatedAt, createdBy<br>
+                        <b>Optional (4):</b> authUid, authEmail, authVersion (int 1..100000),
+                        passwordChangedByUserAt<br>
+                        <span class="text-rose-600 font-bold">Rule:</span> Non-admin ห้ามแก้ role, username, active;
+                        บัญชี <code>admin</code> หลักต้องมี role='admin' &amp; active=true เสมอ
+                    </div>
+                </div>
+
+                <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-black text-slate-900 mono">/factories/{username}</span>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">14
+                            Allowed Fields Strictly</span>
+                    </div>
+                    <p class="text-xs text-slate-600 mb-2">สร้างได้เมื่อมี <code>/users/{username}</code> อยู่แล้ว
+                        (<code>exists || existsAfter</code>) และอ่าน/เขียนได้เฉพาะเจ้าของหรือ Admin</p>
+                    <div
+                        class="text-[11px] mono bg-white p-2.5 rounded-xl border border-slate-200 text-slate-700 leading-relaxed">
+                        <b>Required (5):</b> username, factoryName (&lt;=120), initialized (bool), updatedAt,
+                        updatedBy<br>
+                        <b>Optional (9):</b> summary (&lt;=60 keys), tankConfig (&lt;=1000), activeTanks (&lt;=500 list
+                        / 50 map), planningData (&lt;=100), customTanks (&lt;=1000), customBuildings (&lt;=100),
+                        globalSettings (&lt;=50), tankSettingsHistory (&lt;=5000), customQCLimits (&lt;=200)
+                    </div>
+                </div>
+
+                <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-black text-slate-900 mono">/factories/{username}/chunks/chunk_{i}
+                            &amp; snap_*</span>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700">350 Tx /
+                            Chunk</span>
+                    </div>
+                    <div
+                        class="text-[11px] mono bg-white p-2.5 rounded-xl border border-slate-200 text-slate-700 leading-relaxed">
+                        <b>Fields (3):</b> chunkIndex (int 0..10000), transactions (list &lt;= 5000 items),
+                        updatedAt<br>
+                        <b>Client Policy:</b> แบ่งชุดละ <code>TX_CHUNK_SIZE = 350</code> รายการ และลบเฉพาะ
+                        <code>chunk_*</code> ส่วนเกิน (<code>idx &gt;= chunkCount</code>) ส่วน
+                        <code>snap_{logId}_b/a_{i}</code>
+                        ใช้เก็บ Snapshot สำหรับ Rollback โดยถูกกรองออกจากการโหลดคลังปัจจุบัน
+                    </div>
+                </div>
+
+                <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-black text-slate-900 mono">/auditLogs/{logId}</span>
+                        <span
+                            class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">Append-Only
+                            Immutable</span>
+                    </div>
+                    <div
+                        class="text-[11px] mono bg-white p-2.5 rounded-xl border border-slate-200 text-slate-700 leading-relaxed">
+                        <b>Fields:</b> actor (req), action (req), timestamp (req), target (opt), details (opt &lt;=2000
+                        chars or 30 keys)<br>
+                        <b>Rule &amp; Actions:</b> <code>allow update, delete: if false;</code> บันทึกเหตุการณ์
+                        Auth/Admin
+                        (<code>LOGIN, LOGOUT, PASSWORD_CHANGE_SELF, ADMIN_CREATE_USER, ADMIN_RESET_PASSWORD, ADMIN_ROLLBACK</code>),
+                        Data Onboarding (<code>FIRST_TIME_IMPORT, FIRST_TIME_FRESH_START</code>), Transactions
+                        (<code>TX_RECEIVE_IN, TX_TRANSFER, TX_BLEND, TX_OUT, TX_EDIT, TX_DELETE, TX_RECONCILE</code>)
+                        และ
+                        Settings พร้อมสถานะ <code>before/after</code> และปุ่ม Rollback แบบ Real-Time
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+                <b><i class="fas fa-database mr-1"></i> การซิงค์ Key ภายในเครื่อง (9 Isolated LocalStorage Keys):</b>
+                <code
+                    class="mono text-[11px] block mt-1 text-slate-800">liquor_transactions, tank_config, active_tanks, planning_data, custom_tanks, custom_buildings, global_settings, tank_settings_history, custom_qc_limits</code>
+                ทุก Key ถูกเก็บแยกภายใต้ prefix <code>stockms_tenant::{username}::*</code> พร้อม metadata
+                <code>__meta</code> และสลับค่ามายัง working keys เมื่อ Admin
+                สลับดูคลังโรงงานอื่นหรือเมื่อผู้ใช้เปลี่ยนบัญชี
+            </div>
+        </section>
+
+        <!-- SECTION 4: Admin Capabilities & Analytics Engine -->
+        <section id="sec-admin" class="card p-5 sm:p-7 section-anchor">
+            <div class="mb-5 pb-3 border-b border-slate-100">
+                <span class="text-[11px] font-extrabold uppercase tracking-wider text-purple-600">Section 04 • Admin
+                    Operations &amp; Decision Engine</span>
+                <h2 class="text-xl font-black text-slate-900">4. สิทธิ์ของ Admin, การจัดการ User
+                    และการวิเคราะห์เปรียบเทียบทุกโรงงาน</h2>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5 text-xs">
+                <div class="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200">
+                    <div class="font-extrabold text-indigo-900 text-sm mb-1.5"><i class="fas fa-user-plus mr-1.5"></i>
+                        เพิ่ม User &amp; ตั้งรหัสผ่านใหม่</div>
+                    <p class="text-slate-700 leading-relaxed">
+                        Admin สร้างบัญชีโรงงาน/Admin ใหม่ หรือกดรีเซ็ตรหัสผ่านให้ User ใดก็ได้โดยไม่หลุดจาก Session
+                        Admin ด้วยเทคนิค <b>Secondary Auth Session</b> พร้อมเพิ่มค่า <code>authVersion</code>
+                        (<code>.v2</code>, <code>.v3</code>, ...) และสร้างเอกสารเริ่มต้นใน
+                        <code>/factories/{username}</code> ให้อัตโนมัติ
+                    </p>
+                </div>
+                <div class="p-4 rounded-2xl bg-blue-50/70 border border-blue-200">
+                    <div class="font-extrabold text-blue-900 text-sm mb-1.5"><i class="fas fa-exchange-alt mr-1.5"></i>
+                        สลับดู/บริหารคลังรายโรงงาน</div>
+                    <p class="text-slate-700 leading-relaxed">
+                        ผ่าน Dropdown บน Navbar (<code>navAdminFactorySelect</code>) และแถบ Admin บนมือถือ
+                        (<code>kmAdminFactorySelect</code>) ระบบจะสั่ง <code>saveFactoryToCloudNow()</code>
+                        ของโรงงานเดิมก่อนล้าง working storage แล้ว Activate คลังปลายทางทั้งหน้า <code>index.html</code>
+                        และ <code>dashboard.html</code>
+                    </p>
+                </div>
+                <div class="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200">
+                    <div class="font-extrabold text-emerald-900 text-sm mb-1.5"><i
+                            class="fas fa-balance-scale-right mr-1.5"></i> เปรียบเทียบทุกโรงงาน &amp; กราฟ</div>
+                    <p class="text-slate-700 leading-relaxed">
+                        รวบรวมสรุปจากทุกบัญชี <code>role !== 'admin'</code> คำนวณสต็อกรวม ความจุ %การใช้พื้นที่ แยกสุรา
+                        70° vs 40°/35°/30°/28° อัตรา QC ผ่าน ยอดรับ-จ่าย 30 วัน แสดงตารางและกราฟแท่งเปรียบเทียบ
+                        (Chart.js) พร้อมปุ่มคลิกเข้าคลังโรงงานนั้นทันที
+                    </p>
+                </div>
+                <div class="p-4 rounded-2xl bg-rose-50/70 border border-rose-200">
+                    <div class="font-extrabold text-rose-900 text-sm mb-1.5"><i class="fas fa-history mr-1.5"></i>
+                        Real-Time Activity Logs &amp; ย้อนข้อมูล (Rollback)</div>
+                    <p class="text-slate-700 leading-relaxed">
+                        ติดตามการใช้งานผู้ใช้ทุกโรงงานแบบ Real-Time ผ่าน Cloud Listener ร่วมกับ
+                        <code>BroadcastChannel('blending_stock_sync')</code> และ <code>storage</code> event
+                        แจ้งเตือน Admin ทันที (Badge <code>#navAdminLogsBadge</code> + Toast
+                        <code>#stockmsRealtimeLogToast</code>)
+                        เปิดดูรายละเอียดและเทียบ Snapshot ได้ที่ <code>#adminAuditLogsModal</code>
+                        (<code>previewLogSnapshot</code>) และสั่งย้อนข้อมูลผ่าน <code>adminRollbackFactory()</code>
+                        ได้ทั้งโหมด <code>before</code> (ยกเลิกรายการ) และ <code>after</code>
+                        (คืนค่า ณ จุดเวลา) พร้อมบันทึก Log <code>ADMIN_ROLLBACK</code> อัตโนมัติ
+                    </p>
+                </div>
+            </div>
+
+            <h3 class="text-sm font-extrabold text-slate-800 mb-2"><i
+                    class="fas fa-lightbulb text-amber-500 mr-1.5"></i> เกณฑ์การสร้างบทสรุปและคำแนะนำอัตโนมัติ
+                (<code>generateFactoryRecommendations</code>)</h3>
+            <div class="overflow-x-auto rounded-2xl border border-slate-200">
+                <table class="w-full text-xs text-left">
+                    <thead class="bg-slate-100 font-bold text-slate-700">
+                        <tr>
+                            <th class="px-4 py-2.5">เงื่อนไขที่ตรวจพบ</th>
+                            <th class="px-4 py-2.5">ระดับความเสี่ยง</th>
+                            <th class="px-4 py-2.5">คำแนะนำที่ระบบสร้างให้ผู้บริหาร</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        <tr>
+                            <td class="px-4 py-2.5 mono">!analytics.initialized</td>
+                            <td class="px-4 py-2.5"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold badge-med">watch
+                                    (ติดตาม)</span></td>
+                            <td class="px-4 py-2.5">แจ้งเตือนให้โรงงาน Login เพื่อ Import ไฟล์ Backup JSON
+                                หรือกดเริ่มต้นใช้งานใหม่</td>
+                        </tr>
+                        <tr>
+                            <td class="px-4 py-2.5 mono">utilizationPct &gt;= 88%</td>
+                            <td class="px-4 py-2.5"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold badge-high">critical
+                                    (เร่งด่วน)</span></td>
+                            <td class="px-4 py-2.5">พื้นที่จัดเก็บใกล้เต็ม —
+                                ควรเร่งจ่ายบรรจุหรือกระจายสุราเข้าถังว่าง/โรงงานเครือข่าย</td>
+                        </tr>
+                        <tr>
+                            <td class="px-4 py-2.5 mono">utilizationPct &lt; 20% &amp;&amp; txCount &gt; 0</td>
+                            <td class="px-4 py-2.5"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold badge-med">watch
+                                    (ติดตาม)</span></td>
+                            <td class="px-4 py-2.5">ปริมาณสต็อกคงคลังค่อนข้างต่ำ — แนะนำตรวจสอบแผนรับกลั่นล่วงหน้า</td>
+                        </tr>
+                        <tr>
+                            <td class="px-4 py-2.5 mono">(ready70 / v70) * 100 &lt; 25% หรือ v70 == 0</td>
+                            <td class="px-4 py-2.5"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold badge-med">watch
+                                    (ติดตาม)</span></td>
+                            <td class="px-4 py-2.5">สัดส่วนสุรา 70° ที่บ่มครบ 14 วันพร้อมปรุงต่ำ —
+                                ควรชะลอการเบิกเกินกำลังบ่ม / บันทึกยอดยกมา</td>
+                        </tr>
+                        <tr>
+                            <td class="px-4 py-2.5 mono">qcIssues &gt; 0</td>
+                            <td class="px-4 py-2.5"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold badge-high">critical
+                                    (เร่งด่วน)</span></td>
+                            <td class="px-4 py-2.5">ระบุจำนวนรายการที่ไม่ผ่านเกณฑ์ QC และ % อัตราผ่าน —
+                                แนะนำตรวจสอบก่อนปล่อยบรรจุ</td>
+                        </tr>
+                        <tr>
+                            <td class="px-4 py-2.5 mono">daysLeft70 !== null &amp;&amp; daysLeft70 &lt; 14</td>
+                            <td class="px-4 py-2.5"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold badge-high">critical
+                                    (เร่งด่วน)</span></td>
+                            <td class="px-4 py-2.5">สต็อก 70° คงเหลือใช้ได้ต่ำกว่าเกณฑ์ Safety Stock 14
+                                วันตามแผนใช้รายเดือน</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- SECTION 5: Domain Business Rules & Technical Constraints -->
+        <section id="sec-rules" class="card p-5 sm:p-7 section-anchor">
+            <div class="mb-5 pb-3 border-b border-slate-100">
+                <span class="text-[11px] font-extrabold uppercase tracking-wider text-amber-600">Section 05 • Business
+                    Rules &amp; Operational Constraints</span>
+                <h2 class="text-xl font-black text-slate-900">5. กฎเกณฑ์ทางธุรกิจ (Business Rules) และข้อจำกัดของระบบ
+                    (Constraints)</h2>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5 text-xs">
+                <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+                    <h3 class="text-sm font-extrabold text-slate-900"><i
+                            class="fas fa-balance-scale text-blue-600 mr-1.5"></i> กฎการคำนวณคลังสุรา (Inventory &amp;
+                        FIFO Logic)</h3>
+                    <ul class="space-y-2 text-slate-700 leading-relaxed list-disc pl-4">
+                        <li><b>เกณฑ์อายุบ่มมาตรฐาน (Maturation Threshold):</b> สุราดีกรีสูง (<code>High / 70°</code>)
+                            ต้องบ่มอย่างน้อย <b>14 วัน</b>; สุราปรุงพร้อมบรรจุ (<code>40° / 35° / 30° / 28°</code>)
+                            ต้องพักอย่างน้อย <b>7 วัน</b></li>
+                        <li><b>ระบบชั้นข้อมูล FIFO (First-In First-Out):</b> รายการ <code>IN</code> /
+                            <code>INITIAL_IN</code> / <code>TRANSFER_IN</code> / <code>BLEND_IN</code> จะสร้าง Layer
+                            เรียงตาม <code>date</code> และ <code>id</code> เมื่อมีการเบิก/โอน/จ่าย (<code>OUT</code>)
+                            ระบบจะตัดยอดจาก Layer เก่าสุดก่อนเสมอ พร้อมถ่ายทอด <code>sourceLayers</code> และ
+                            <code>targetDegree</code> ไปยังถังปลายทาง
+                        </li>
+                        <li><b>ข้อยกเว้นถังปรุงสุรา (Blending Tanks):</b> ถังที่ชื่อขึ้นต้น/มีคำว่า
+                            <code>ถังปรุงสุรา 1</code>, <code>ถังปรุงสุรา 2</code> (ความจุ 50,000 L ใน
+                            <code>Building_110</code>) เป็นถังพักผสมชั่วคราว
+                            <b>ไม่ถูกนับรวมในความจุหรือยอดคงคลังสุราสำเร็จรูป</b> เพื่อป้องกันการนับซ้ำ (Double
+                            Counting)
+                        </li>
+                        <li><b>สถานะถัง <code>bonded</code> และ <code>repair</code>:</b> ถังติดทัณฑ์บน
+                            (<code>bonded</code>) ถูกหักออกทั้งจากยอดคงคลังใช้งานและความจุคลังรวม; ถังซ่อมบำรุง
+                            (<code>repair</code>) ถูกหักออกจากความจุที่ใช้งานได้จริง</li>
+                        <li><b>ความจุรายดีกรี &amp; ประวัติถัง:</b> อ้างอิงจาก <code>globalSettings</code>
+                            (<code>cap70, cap40, cap35, cap30, cap28</code>) ก่อน หากเป็น 0 จึง Fallback ไปคำนวณจาก
+                            <code>TANK_DEFINITIONS</code> ที่เปิดใช้งาน และใช้ <code>tankSettingsHistory</code>
+                            สำหรับรายงานย้อนหลัง
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+                    <h3 class="text-sm font-extrabold text-slate-900"><i
+                            class="fas fa-exclamation-triangle text-amber-600 mr-1.5"></i> ข้อจำกัดและเงื่อนไขทางเทคนิค
+                        (System Constraints)</h3>
+                    <ul class="space-y-2 text-slate-700 leading-relaxed list-disc pl-4">
+                        <li><b>Cloud Auth Password Policy (ขั้นต่ำ 6 ตัวอักษร):</b> รหัสผ่านเริ่มต้นของโรงงาน 4 แห่ง
+                            (เช่น <code>msssd</code>) ยาว 5 ตัวอักษรจึงแก้ด้วยฟังก์ชันแปลง Credential แบบ Deterministic
+                            (<code>StkMS#</code> + SHA-256) ก่อนส่งเข้า Auth Engine</li>
+                        <li><b>โควตาขนาด Document 1 MiB ต่อเอกสาร:</b> คลังที่มีธุรกรรมหลักพันรายการอาจเกิน 1 MiB
+                            จึงแก้โดยแยกธุรกรรมลง Subcollection <code>chunks/chunk_{i}</code> ชุดละไม่เกิน <b>350
+                                รายการ</b></li>
+                        <li><b>ความเร็วและการทำงาน Offline:</b> เปิด Persistent Local Cache
+                            แบบข้ามแท็บเพื่อให้ทำงานต่อได้เมื่ออินเทอร์เน็ตหลุด และซิงค์กลับ Cloud เมื่อต่อติด
+                            (<code>scheduleCloudSync</code> หน่วง 450ms)</li>
+                        <li><b>การให้บริการไฟล์บน HTTP/HTTPS:</b> เพื่อประสิทธิภาพสูงสุดของ IndexedDB Cache,
+                            BroadcastChannel และ Clipboard/Fullscreen แนะนำรันผ่าน Web Server (HTTPS/localhost)
+                            แทนการเปิดผ่าน <code>file://</code> โดยตรง</li>
+                        <li><b>ข้อควรระวังเรื่องรหัสผ่าน Client-Side &amp; Admin Reset:</b> การใช้งานโปรเจกต์ Static
+                            HTML ใช้ Secondary Auth Session ร่วมกับ <code>authVersion</code> (<code>.vN</code>) เมื่อ
+                            Admin รีเซ็ตรหัสผ่าน; โปรดเปิดใช้ Email/Password Sign-in และ Fallback Auth บน Cloud Console
+                            พร้อมบังคับใช้ Cloud Security Rules อย่างเคร่งครัด</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 6: Bug & Security Audit Ledger (High -> Medium -> Low) -->
+        <section id="sec-audit" class="card p-5 sm:p-7 section-anchor">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-5 pb-3 border-b border-slate-100">
+                <div>
+                    <span class="text-[11px] font-extrabold uppercase tracking-wider text-rose-600">Section 06 • Bug
+                        &amp; Vulnerability Audit (High → Low)</span>
+                    <h2 class="text-xl font-black text-slate-900">6.
+                        รายการตรวจสอบและแก้ไขจุดบกพร่องและความปลอดภัยทั้งหมด (เรียงจากความเสี่ยงสูงลงมา)</h2>
+                </div>
+                <div class="flex items-center gap-1.5 text-xs font-bold" id="auditFilterBtns">
+                    <button type="button" onclick="filterAudit('ALL', this)"
+                        class="audit-filter-btn px-3 py-1.5 rounded-xl bg-slate-900 text-white cursor-pointer">ทั้งหมด
+                        (16)</button>
+                    <button type="button" onclick="filterAudit('HIGH', this)"
+                        class="audit-filter-btn px-3 py-1.5 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 cursor-pointer">High
+                        (5)</button>
+                    <button type="button" onclick="filterAudit('MED', this)"
+                        class="audit-filter-btn px-3 py-1.5 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 cursor-pointer">Medium
+                        (8)</button>
+                    <button type="button" onclick="filterAudit('LOW', this)"
+                        class="audit-filter-btn px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 cursor-pointer">Low
+                        (3)</button>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto rounded-2xl border border-slate-200">
+                <table class="w-full text-xs text-left">
+                    <thead class="bg-slate-100 text-slate-700 font-bold">
+                        <tr>
+                            <th class="px-3.5 py-3 w-24">ความเสี่ยง</th>
+                            <th class="px-3.5 py-3 w-24">รหัส</th>
+                            <th class="px-3.5 py-3">ปัญหา / ช่องโหว่ที่พบ (Root Cause)</th>
+                            <th class="px-3.5 py-3">จุดที่พบ (Location)</th>
+                            <th class="px-3.5 py-3">แนวทางแก้ไขที่ดำเนินการจริง (Fix Applied)</th>
+                            <th class="px-3.5 py-3 w-24 text-center">สถานะ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="auditTableBody" class="divide-y divide-slate-100">
+                        <tr data-sev="HIGH">
+                            <td class="px-3.5 py-3"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-black badge-high">HIGH</span></td>
+                            <td class="px-3.5 py-3 font-bold mono">HIGH-01</td>
+                            <td class="px-3.5 py-3 font-semibold text-slate-900">ข้อมูลข้ามโรงงานปะปนกัน (Cross-Tenant
+                                Leak) เนื่องจากใช้ Key ใน <code>localStorage</code> ร่วมกันและ
+                                <code>BroadcastChannel</code> ไม่ตรวจสอบตัวตนโรงงาน
+                            </td>
+                            <td class="px-3.5 py-3 mono text-[11px]">index.html<br>dashboard.html<br>Cloud Sync Module
+                            </td>
+                            <td class="px-3.5 py-3">แยกพื้นที่จัดเก็บ <code>stockms_tenant::&lt;username&gt;::*</code>,
+                                เพิ่ม Synchronous Pre-Hydration ใน <code>&lt;head&gt;</code> ก่อนสคริปต์หน้าเว็บทำงาน
+                                และแนบ/ตรวจสอบ <code>factoryId</code> ในทุกข้อความของ <code>BroadcastChannel</code></td>
+                            <td class="px-3.5 py-3 text-center"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold badge-ok">แก้ไขแล้ว</span>
+                            </td>
+                        </tr>
+                        <tr data-sev="HIGH">
+                            <td class="px-3.5 py-3"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-black badge-high">HIGH</span></td>
+                            <td class="px-3.5 py-3 font-bold mono">HIGH-02</td>
+                            <td class="px-3.5 py-3 font-semibold text-slate-900">Hardcoded รหัสผ่าน Backdoor
+                                <code>'superadmin'</code> แบบ Plaintext ในโค้ด JavaScript สำหรับปลดล็อก Power User QC
+                            </td>
+                            <td class="px-3.5 py-3 mono text-[11px]">dashboard.html<br>(promptQCPowerUserAuth)</td>
+                            <td class="px-3.5 py-3">ลบรหัสผ่านที่ฝังในโค้ดออก เปลี่ยนไปเรียก
+                                <code>StockMSAuth.verifyCurrentOrAdminPassword()</code> ตรวจสอบ Salted SHA-256
+                                กับบัญชีปัจจุบันหรือบัญชี Admin จากฐานข้อมูลกลาง
+                            </td>
+                            <td class="px-3.5 py-3 text-center"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold badge-ok">แก้ไขแล้ว</span>
+                            </td>
+                        </tr>
+                        <tr data-sev="HIGH">
+                            <td class="px-3.5 py-3"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-black badge-high">HIGH</span></td>
+                            <td class="px-3.5 py-3 font-bold mono">HIGH-03</td>
+                            <td class="px-3.5 py-3 font-semibold text-slate-900">ช่องโหว่ Stored/Reflected XSS
+                                จากการแทรกข้อมูล <code>batch</code>, <code>tankId</code>, <code>notes</code>,
+                                <code>qcFailures</code>, <code>layerQCIssues</code> ลง <code>innerHTML</code> โดยไม่
+                                Escape
+                            </td>
+                            <td class="px-3.5 py-3 mono text-[11px]">index.html<br>(formatBatchDisplay,<br>renderTable)
+                            </td>
+                            <td class="px-3.5 py-3">สร้างตัวช่วย <code>window.escapeHtml()</code> ในโมดูลกลางและครอบค่า
+                                Input/ข้อมูลธุรกรรมในตาราง <code>renderTable()</code> และ
+                                <code>formatBatchDisplay()</code> รวมถึงตาราง Admin
+                            </td>
+                            <td class="px-3.5 py-3 text-center"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold badge-ok">แก้ไขแล้ว</span>
+                            </td>
+                        </tr>
+                        <tr data-sev="HIGH">
+                            <td class="px-3.5 py-3"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-black badge-high">HIGH</span></td>
+                            <td class="px-3.5 py-3 font-bold mono">HIGH-04</td>
+                            <td class="px-3.5 py-3 font-semibold text-slate-900">ไม่มี Cloud Security Rules
+                                ป้องกันการอ่าน-เขียนข้ามโรงงานและการปลอมสิทธิ์ Admin พร้อมความเสี่ยงฟิลด์
+                                <code>/users</code> ไม่ตรง Rule Schema
+                            </td>
+                            <td class="px-3.5 py-3 mono text-[11px]">Cloud Security Rules<br>Cloud Sync Module</td>
+                            <td class="px-3.5 py-3">สร้าง Cloud Security Rules (Default Deny, RBAC,
+                                <code>hasOnlyAllowedFields</code>, Schema Validation, Append-Only
+                                <code>auditLogs</code>) และปรับฟิลด์/ลำดับสร้างเอกสารให้ตรงกัน 100%
+                            </td>
+                            <td class="px-3.5 py-3 text-center"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold badge-ok">แก้ไขแล้ว</span>
+                            </td>
+                        </tr>
+                        <tr data-sev="HIGH">
+                            <td class="px-3.5 py-3"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-black badge-high">HIGH</span></td>
+                            <td class="px-3.5 py-3 font-bold mono">HIGH-05</td>
+                            <td class="px-3.5 py-3 font-semibold text-slate-900">ลิงก์ <code>?share=</code>
+                                เขียนทับข้อมูลข้ามโรงงานได้, ฟังก์ชัน <code>saveData/export/import/reset</code>
+                                ยังทำงานได้ก่อนล็อกอิน และ <code>qc_power_user</code> + แคชในหน่วยความจำไม่ล้างเมื่อ
+                                Logout/สลับโรงงาน</td>
+                            <td class="px-3.5 py-3 mono text-[11px]">index.html<br>dashboard.html<br>Cloud Sync Module
+                            </td>
+                            <td class="px-3.5 py-3">ผูก <code>factoryId</code>
+                                ในลิงก์แชร์และปฏิเสธเมื่อไม่ตรงกับโรงงานปัจจุบัน, เพิ่มการตรวจ Session ในทุกเมธอด I/O
+                                &amp; URL Routing, และบังคับล้าง <code>qc_power_user</code>, <code>simStateCache</code>,
+                                ตัวแปร Form และตั้ง Timer ล็อกซิงค์เมื่อสลับ/ออกจากระบบ</td>
+                            <td class="px-3.5 py-3 text-center"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold badge-ok">แก้ไขแล้ว</span>
+                            </td>
+                        </tr>
+
+                        <tr data-sev="MED">
+                            <td class="px-3.5 py-3"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-black badge-med">MEDIUM</span></td>
+                            <td class="px-3.5 py-3 font-bold mono">MED-01</td>
+                            <td class="px-3.5 py-3 font-semibold text-slate-900">รายการ <code>DEFAULT_TANKS</code> ใน
+                                <code>dashboard.html</code> ขาด <code>ถังปรุงสุรา 1</code> และ
+                                <code>ถังปรุงสุรา 2</code> ทำให้ข้อมูลปรุงสุราไม่เชื่อมกับหน้า Dashboard บนฐานใหม่
+                            </td>
+                            <td class="px-3.5 py-3 mono text-[11px]">dashboard.html<br>Cloud Sync Module</td>
+                            <td class="px-3.5 py-3">เพิ่ม <code>ถังปรุงสุรา 1</code> และ <code>ถังปรุงสุรา 2</code>
+                                (ความจุ 50,000 L, <code>Building_110</code>) ให้ตรงกันทั้ง <code>index.html</code>,
+                                <code>dashboard.html</code> และ <code>UNIFIED_DEFAULT_TANKS</code>
+                            </td>
+                            <td class="px-3.5 py-3 text-center"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold badge-ok">แก้ไขแล้ว</span>
+                            </td>
+                        </tr>
+                        <tr data-sev="MED">
+                            <td class="px-3.5 py-3"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-black badge-med">MEDIUM</span></td>
+                            <td class="px-3.5 py-3 font-bold mono">MED-02</td>
+                            <td class="px-3.5 py-3 font-semibold text-slate-900"><code>dashboard.html</code> ไม่อัปเดต
+                                <code>custom_buildings</code> เมื่อสลับโรงงาน/รีโหลด และไม่นำ
+                                <code>globalSettings.cap40/35/30/28</code> มาคำนวณความจุ
+                            </td>
+                            <td class="px-3.5 py-3 mono text-[11px]">dashboard.html<br>(loadData, updateAllData)</td>
+                            <td class="px-3.5 py-3">แก้ <code>loadData()</code> ให้โหลด <code>custom_buildings</code>
+                                ล่าสุด และให้ <code>updateAllData()</code> คำนวณ
+                                <code>effectiveCapHigh/40/35/30/28</code> จาก <code>globalSettings</code> ร่วมกับถังจริง
+                            </td>
+                            <td class="px-3.5 py-3 text-center"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold badge-ok">แก้ไขแล้ว</span>
+                            </td>
+                        </tr>
+                        <tr data-sev="MED">
+                            <td class="px-3.5 py-3"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-black badge-med">MEDIUM</span></td>
+                            <td class="px-3.5 py-3 font-bold mono">MED-03</td>
+                            <td class="px-3.5 py-3 font-semibold text-slate-900">FIFO Layer ใน
+                                <code>dashboard.html</code> ไม่ส่งต่อ/ตรวจสอบ <code>targetDegree</code> ทำให้ยอดสุรา
+                                35°, 30°, 28° ถูกนับรวมผิดประเภท
+                            </td>
+                            <td class="px-3.5 py-3 mono text-[11px]">dashboard.html<br>(updateAllData FIFO)</td>
+                            <td class="px-3.5 py-3">เก็บ <code>targetDegree</code> บนทุก FIFO layer และใช้ค่า
+                                <code>lastLayer.targetDegree</code> กำหนดประเภทดีกรีของถัง
+                                (<code>High / 40Deg / 35Deg / 30Deg / 28Deg</code>) ก่อนคำนวณยอดรวม
+                            </td>
+                            <td class="px-3.5 py-3 text-center"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold badge-ok">แก้ไขแล้ว</span>
+                            </td>
+                        </tr>
+                        <tr data-sev="MED">
+                            <td class="px-3.5 py-3"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-black badge-med">MEDIUM</span></td>
+                            <td class="px-3.5 py-3 font-bold mono">MED-04</td>
+                            <td class="px-3.5 py-3 font-semibold text-slate-900">หน้า Dashboard นับถังสถานะ
+                                <code>bonded</code> และ <code>repair</code> รวมในความจุใช้งานและยอดสต็อกรวม
+                                ไม่ตรงกับหน้า Control
+                            </td>
+                            <td class="px-3.5 py-3 mono text-[11px]">dashboard.html<br>(updateAllData KPI)</td>
+                            <td class="px-3.5 py-3">กรองถัง <code>bonded</code> และ <code>repair</code>
+                                ออกจากการคำนวณความจุ (<code>isTankActive</code>) และไม่รวมยอดถัง <code>bonded</code>
+                                ในการ์ดสรุปปริมาณคงคลังรายดีกรี</td>
+                            <td class="px-3.5 py-3 text-center"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold badge-ok">แก้ไขแล้ว</span>
+                            </td>
+                        </tr>
+                        <tr data-sev="MED">
+                            <td class="px-3.5 py-3"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-black badge-med">MEDIUM</span></td>
+                            <td class="px-3.5 py-3 font-bold mono">MED-05</td>
+                            <td class="px-3.5 py-3 font-semibold text-slate-900">รายงานประจำวัน
+                                (<code>loadDailyReportData</code>) ใช้ความจุ Hardcode <code>16,540,000</code> /
+                                <code>1,568,000</code> และผลรวมยอดดิบแทนยอดคงเหลือ ณ วันที่เลือก
+                            </td>
+                            <td class="px-3.5 py-3 mono text-[11px]">index.html<br>(loadDailyReportData)</td>
+                            <td class="px-3.5 py-3">คำนวณ <code>dynamicCapHigh</code> / <code>dynamicCap40</code>
+                                จากถังที่ใช้งานได้จริง + <code>globalSettings</code> และดึงยอด Gauge ด้วย
+                                <code>getBalanceAtDate()</code> ตามวันที่เลือก
+                            </td>
+                            <td class="px-3.5 py-3 text-center"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold badge-ok">แก้ไขแล้ว</span>
+                            </td>
+                        </tr>
+                        <tr data-sev="MED">
+                            <td class="px-3.5 py-3"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-black badge-med">MEDIUM</span></td>
+                            <td class="px-3.5 py-3 font-bold mono">MED-06</td>
+                            <td class="px-3.5 py-3 font-semibold text-slate-900"><code>importData()</code>
+                                รีโหลดหน้าเว็บก่อนซิงค์ฐานข้อมูลกลางเสร็จ &amp; ทิ้งค่า <code>custom_qc_limits</code>
+                                เก่า; <code>resetSystem()</code> ล้างข้อมูลไม่ครบทั้ง 9 Keys</td>
+                            <td class="px-3.5 py-3 mono text-[11px]">index.html<br>(importData, resetSystem)</td>
+                            <td class="px-3.5 py-3">ล้าง <code>custom_qc_limits</code> เมื่อไฟล์ Import ไม่มีค่านี้
+                                พร้อมรอ <code>StockMSStorage.syncNow()</code> ก่อน Reload และให้
+                                <code>resetSystem()</code> รีเซ็ตครบทั้ง 9 Keys รวมถึง <code>BUILDINGS</code>,
+                                <code>globalSettings</code>, <code>tankSettingsHistory</code> และสั่ง Sync Cloud
+                            </td>
+                            <td class="px-3.5 py-3 text-center"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold badge-ok">แก้ไขแล้ว</span>
+                            </td>
+                        </tr>
+                        <tr data-sev="MED">
+                            <td class="px-3.5 py-3"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-black badge-med">MEDIUM</span></td>
+                            <td class="px-3.5 py-3 font-bold mono">MED-07</td>
+                            <td class="px-3.5 py-3 font-semibold text-slate-900">หน้า Login
+                                เปิดเผยรายชื่อโรงงาน/ทางลัดบัญชี (<code>#loginQuickChips</code>) และข้อความ Error
+                                แยกกรณีไม่พบบัญชีกับรหัสผ่านผิด (Username Enumeration)</td>
+                            <td class="px-3.5 py-3 mono text-[11px]">Cloud Sync Module<br>(performLogin, UI)</td>
+                            <td class="px-3.5 py-3">ลบทางลัดบัญชีและตัวอย่าง Username ออกจากหน้า Login
+                                และรวมข้อความปฏิเสธการเข้าสู่ระบบเป็นประโยคเดียวสำหรับทั้งกรณีไม่พบบัญชีและรหัสผ่านผิด
+                            </td>
+                            <td class="px-3.5 py-3 text-center"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold badge-ok">แก้ไขแล้ว</span>
+                            </td>
+                        </tr>
+                        <tr data-sev="MED">
+                            <td class="px-3.5 py-3"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-black badge-med">MEDIUM</span></td>
+                            <td class="px-3.5 py-3 font-bold mono">MED-08</td>
+                            <td class="px-3.5 py-3 font-semibold text-slate-900">จุดหลงเหลือช่องโหว่ XSS &amp; Null
+                                Dereference ใน <code>formatBatchDisplay</code> (<code>BLEND_OUT</code>),
+                                <code>manageTankSettings</code>, <code>loadAuditData</code> และตาราง QC/Flow ของ
+                                Dashboard
+                            </td>
+                            <td class="px-3.5 py-3 mono text-[11px]">index.html<br>dashboard.html</td>
+                            <td class="px-3.5 py-3">ย้าย <code>esc()</code> ครอบ <code>BLEND_OUT</code>, Escape
+                                ค่าถัง/อาคาร/Batch/ผู้บันทึกทั้งหมด และเพิ่ม Null Guard บน <code>BUILDINGS[d.b]</code>
+                                กับการเรนเดอร์ <code>dashboard.html</code></td>
+                            <td class="px-3.5 py-3 text-center"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold badge-ok">แก้ไขแล้ว</span>
+                            </td>
+                        </tr>
+
+                        <tr data-sev="LOW">
+                            <td class="px-3.5 py-3"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-black badge-low">LOW</span></td>
+                            <td class="px-3.5 py-3 font-bold mono">LOW-01</td>
+                            <td class="px-3.5 py-3 font-semibold text-slate-900">หน้าจอมือถือมีปุ่ม Navbar ล้น/ซ้อนกัน,
+                                Toast แจ้งเตือนบังปุ่มบนมือถือ และยังไม่มีปุ่มขยายเต็มหน้าจอ</td>
+                            <td class="px-3.5 py-3 mono text-[11px]">mobile-kosmate.css<br>Cloud Sync Module</td>
+                            <td class="px-3.5 py-3">สร้าง KosMate Mobile App Shell (4x2 Squircle Grid + Bottom Nav 5
+                                ช่อง + Radial Fan-Out Speed-Dial Menu <code>#kosmateRadialMenuOverlay</code>
+                                รองรับทั้งการแตะและลากนิ้วปล่อย
+                                <code>ลากนิ้วไปที่ปุ่มแล้วปล่อย</code> ไปยัง 4 ฟังก์ชันหลัก: <code>รับ-จ่าย</code>,
+                                <code>รายวัน</code>,
+                                <code>ตรวจ QC</code>, <code>วัดถัง</code>), ย้าย Toast เหนือ Bottom Nav, ใส่
+                                <code>flex-wrap</code> บน Header Modal และเพิ่มปุ่ม <code>toggleAppFullscreen()</code>
+                                ทุกหน้า
+                            </td>
+                            <td class="px-3.5 py-3 text-center"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold badge-ok">แก้ไขแล้ว</span>
+                            </td>
+                        </tr>
+                        <tr data-sev="LOW">
+                            <td class="px-3.5 py-3"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-black badge-low">LOW</span></td>
+                            <td class="px-3.5 py-3 font-bold mono">LOW-02</td>
+                            <td class="px-3.5 py-3 font-semibold text-slate-900">รหัสผ่านเริ่มต้นของโรงงาน
+                                (<code>msssd</code>, <code>mskkd</code>, <code>msamd</code>, <code>msttd</code>) ยาว 5
+                                ตัวอักษร ซึ่งสั้นกว่าเกณฑ์ขั้นต่ำ 6 ตัวของ Cloud Auth Policy</td>
+                            <td class="px-3.5 py-3 mono text-[11px]">Cloud Sync Module<br>(Auth Secret Derivation)</td>
+                            <td class="px-3.5 py-3">สร้างฟังก์ชันแปลง Credential ฝั่ง Auth เป็น 20 ตัวอักษร
+                                (<code>StkMS#</code> + SHA-256 14 หลัก) เพื่อผ่านนโยบาย Cloud Auth
+                                โดยยังคงให้ผู้ใช้ล็อกอินด้วยรหัสเดิมที่กำหนดได้ปกติ</td>
+                            <td class="px-3.5 py-3 text-center"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold badge-ok">แก้ไขแล้ว</span>
+                            </td>
+                        </tr>
+                        <tr data-sev="LOW">
+                            <td class="px-3.5 py-3"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-black badge-low">LOW</span></td>
+                            <td class="px-3.5 py-3 font-bold mono">LOW-03</td>
+                            <td class="px-3.5 py-3 font-semibold text-slate-900">หน้า Login มีป้ายสถานะซิงค์,
+                                คำใบ้/ข้อความเปิดเผยชื่อเทคโนโลยีฐานข้อมูลเบื้องหลัง และปุ่ม Dark Mode / Sound FX
+                                เกินความจำเป็น</td>
+                            <td class="px-3.5 py-3 mono text-[11px]">mobile-kosmate.css<br>Cloud Sync
+                                Module<br>index.html &amp; dashboard.html</td>
+                            <td class="px-3.5 py-3">ออกแบบพื้นหลังหน้าล็อกอินและโลโก้ SVG ใหม่ ลบป้าย Cloud Synced
+                                และทางลัดหน้า Login, ปรับข้อความ/Tooltip เป็นกลางทั้งหมด และลบปุ่ม Dark Mode / Sound FX
+                                พร้อมบังคับโหมดสว่าง</td>
+                            <td class="px-3.5 py-3 text-center"><span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold badge-ok">แก้ไขแล้ว</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Deployment Checklist -->
+        <section class="card p-5 sm:p-7 bg-slate-900 text-slate-100 border-slate-800">
+            <h3 class="text-base font-black mb-3 flex items-center gap-2 text-emerald-400">
+                <i class="fas fa-rocket"></i> ขั้นตอนเตรียมความพร้อมก่อนใช้งานจริงบน Cloud Platform (Production
+                Checklist)
+            </h3>
+            <ol class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-300 list-decimal pl-5">
+                <li>เปิดใช้งาน <b>Authentication → Sign-in method</b> (Email/Password และ Fallback Session)
+                    บนโปรเจกต์ฐานข้อมูลกลาง</li>
+                <li>Deploy ไฟล์กฎความปลอดภัย (<code class="text-emerald-300">Cloud Security Rules</code>) เพื่อบังคับใช้
+                    RBAC และ Schema Validation บนเซิร์ฟเวอร์</li>
+                <li>เข้าสู่ระบบครั้งแรกด้วยบัญชี <code class="text-amber-300">admin / admin321</code> เพื่อ Seed
+                    เอกสารบัญชีเริ่มต้นทั้ง 5 บัญชีลงคอลเลกชัน <code>/users</code> อย่างสมบูรณ์</li>
+                <li>แนะนำให้เปลี่ยนรหัสผ่าน Admin จากค่าเริ่มต้นหลังเปิดใช้งานจริง และให้แต่ละโรงงาน Import ไฟล์ Backup
+                    JSON ของตนในการ Login ครั้งแรก</li>
+            </ol>
+        </section>
+    </main>
+
+    <script>
+        function filterAudit(sev, btn) {
+            document.querySelectorAll('.audit-filter-btn').forEach(b => {
+                b.classList.remove('bg-slate-900', 'text-white');
+            });
+            if (btn) btn.classList.add('bg-slate-900', 'text-white');
+            document.querySelectorAll('#auditTableBody tr').forEach(tr => {
+                tr.style.display = (sev === 'ALL' || tr.getAttribute('data-sev') === sev) ? '' : 'none';
+            });
+        }
+        function toggleDocFullscreen() {
+            const d = document, el = d.documentElement;
+            if (!d.fullscreenElement) {
+                el.requestFullscreen?.();
+            } else {
+                d.exitFullscreen?.();
+            }
+        }
+        document.addEventListener('fullscreenchange', () => {
+            const ic = document.getElementById('docFsIcon');
+            if (ic) ic.className = document.fullscreenElement ? 'fas fa-compress mr-1' : 'fas fa-expand mr-1';
+            </script>
+</body>
+
+</html>

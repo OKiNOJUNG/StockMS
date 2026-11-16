@@ -1,0 +1,16 @@
+{
+  "rules": {
+    "users": {
+      ".read": "auth != null",
+      "$username": {
+        ".write": "auth != null && (!data.exists() || data.child('authUid').val() === auth.uid || root.child('users/admin/authUid').val() === auth.uid)"
+      }
+    },
+    "factories": {
+      "$username": {
+        ".read": "auth != null && (auth.uid === root.child('users/' + $username + '/authUid').val() || auth.uid === root.child('users/admin/authUid').val())",
+        ".write": "auth != null && (auth.uid === root.child('users/' + $username + '/authUid').val() || auth.uid === root.child('users/admin/authUid').val())"
+      }
+    }
+  }
+}
