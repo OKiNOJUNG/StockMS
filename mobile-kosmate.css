@@ -141,10 +141,10 @@ body.kosmate-force-mobile #toastContainer {
     padding: 1.25rem;
     overflow-y: auto;
     background:
-        radial-gradient(ellipse at 12% 18%, rgba(56, 189, 248, 0.28) 0%, transparent 48%),
-        radial-gradient(ellipse at 88% 16%, rgba(245, 158, 11, 0.22) 0%, transparent 42%),
-        radial-gradient(ellipse at 78% 88%, rgba(37, 99, 235, 0.36) 0%, transparent 50%),
-        linear-gradient(135deg, #061128 0%, #0b224f 38%, #153c88 72%, #0e7490 100%);
+        radial-gradient(ellipse at 14% 16%, rgba(212, 175, 55, 0.24) 0%, transparent 46%),
+        radial-gradient(ellipse at 86% 18%, rgba(16, 185, 129, 0.22) 0%, transparent 44%),
+        radial-gradient(ellipse at 74% 86%, rgba(245, 158, 11, 0.2) 0%, transparent 48%),
+        linear-gradient(135deg, #012217 0%, #004b33 42%, #006747 76%, #054a29 100%);
     font-family: 'Sarabun', sans-serif;
 }
 #authLoginOverlay::before {
@@ -164,7 +164,7 @@ body.kosmate-force-mobile #toastContainer {
     content: "";
     position: fixed;
     inset: 0;
-    background: radial-gradient(circle at 50% 50%, transparent 45%, rgba(2, 6, 23, 0.55) 100%);
+    background: radial-gradient(circle at 50% 50%, transparent 45%, rgba(1, 24, 16, 0.58) 100%);
     pointer-events: none;
     z-index: 0;
 }
@@ -190,7 +190,7 @@ body.kosmate-force-mobile #toastContainer {
     height: 340px;
     top: -90px;
     left: -70px;
-    background: radial-gradient(circle, rgba(56, 189, 248, 0.72), rgba(37, 99, 235, 0.05));
+    background: radial-gradient(circle, rgba(245, 158, 11, 0.62), rgba(180, 83, 9, 0.06));
     animation: stockmsOrbFloat 11s ease-in-out infinite;
 }
 .stockms-login-bg-decor .orb-2 {
@@ -198,7 +198,7 @@ body.kosmate-force-mobile #toastContainer {
     height: 310px;
     bottom: -80px;
     right: -60px;
-    background: radial-gradient(circle, rgba(251, 191, 36, 0.52), rgba(217, 119, 6, 0.04));
+    background: radial-gradient(circle, rgba(16, 185, 129, 0.58), rgba(0, 103, 71, 0.06));
     animation: stockmsOrbFloatAlt 13s ease-in-out infinite;
 }
 .stockms-login-bg-decor .orb-3 {
@@ -206,7 +206,7 @@ body.kosmate-force-mobile #toastContainer {
     height: 240px;
     top: 42%;
     right: 12%;
-    background: radial-gradient(circle, rgba(99, 102, 241, 0.48), transparent 70%);
+    background: radial-gradient(circle, rgba(253, 224, 71, 0.42), transparent 70%);
     animation: stockmsOrbFloat 15s ease-in-out infinite reverse;
 }
 
@@ -234,7 +234,7 @@ body.kosmate-force-mobile #toastContainer {
     left: 0;
     right: 0;
     height: 4px;
-    background: linear-gradient(90deg, #1d4ed8 0%, #0ea5e9 50%, #f59e0b 100%);
+    background: linear-gradient(90deg, #004b33 0%, #047857 52%, #d4af37 100%);
 }
 
 .stockms-logo-emblem {
@@ -965,3 +965,278 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     stroke-linecap: round;
     stroke-linejoin: round;
 }
+
+/* ============================================================================
+   6. THAIBEV PRE-LOGIN PORTAL, GLASSY V10 TABS, STOCK GRID & NAV CATEGORIES
+   ============================================================================ */
+
+/* Pre-Login Welcome Stage + Two-Stage Auth Transition */
+.thaibev-welcome-stage {
+    animation: stockmsStageFade 0.28s ease-out;
+}
+.thaibev-login-stage {
+    display: none;
+    animation: stockmsStageFade 0.28s ease-out;
+}
+#authLoginOverlay.login-stage-active .thaibev-welcome-stage {
+    display: none;
+}
+#authLoginOverlay.login-stage-active .thaibev-login-stage {
+    display: block;
+}
+@keyframes stockmsStageFade {
+    from { opacity: 0; transform: translateY(8px) scale(0.985); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.thaibev-crest-card {
+    background: linear-gradient(150deg, #022c22 0%, #064e3b 48%, #065f46 100%);
+    border-radius: 22px;
+    padding: 1.35rem 1.15rem 1.2rem;
+    color: #ffffff;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(212, 175, 55, 0.42);
+    box-shadow: 0 18px 40px -12px rgba(2, 44, 34, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+.thaibev-crest-card::after {
+    content: "";
+    position: absolute;
+    right: -36px;
+    top: -36px;
+    width: 150px;
+    height: 150px;
+    border-radius: 9999px;
+    background: radial-gradient(circle, rgba(212, 175, 55, 0.24), transparent 70%);
+    pointer-events: none;
+}
+.thaibev-gold-text {
+    background: linear-gradient(90deg, #fde68a 0%, #f59e0b 55%, #fef3c7 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.thaibev-feature-pill {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(203, 213, 225, 0.8);
+    border-radius: 14px;
+    padding: 0.55rem 0.7rem;
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+/* Glassy Navigation Tabs V10 — Elegant Grey & White Theme (Mobile View) */
+.km-glassy-tabs-v10 {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    padding: 5px;
+    border-radius: 20px;
+    background: linear-gradient(135deg, rgba(241, 245, 249, 0.86) 0%, rgba(226, 232, 240, 0.78) 100%);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid rgba(255, 255, 255, 0.92);
+    box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.9), 0 8px 24px -10px rgba(15, 23, 42, 0.16);
+    margin-bottom: 0.95rem;
+}
+.km-glassy-tab-indicator {
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    width: calc((100% - 10px) / 4);
+    height: calc(100% - 10px);
+    border-radius: 15px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.92) 100%);
+    border: 1px solid rgba(203, 213, 225, 0.65);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.10), inset 0 1px 0 #ffffff;
+    transition: transform 0.30s cubic-bezier(0.34, 1.45, 0.64, 1);
+    pointer-events: none;
+    z-index: 0;
+}
+.km-glassy-tab-btn {
+    position: relative;
+    z-index: 1;
+    border: none;
+    background: transparent;
+    padding: 0.48rem 0.2rem;
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #64748b;
+    cursor: pointer;
+    transition: color 0.18s ease, transform 0.18s ease;
+}
+.km-glassy-tab-btn:hover {
+    color: #334155;
+    transform: translateY(-1px);
+}
+.km-glassy-tab-btn.active {
+    color: #0f172a;
+    font-weight: 800;
+}
+
+/* Override Hero Card & Bottom Nav into Frosted Grey-White V10 Aesthetic */
+.kosmate-hero-card.km-glassy-v10-card {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(241, 245, 249, 0.92) 55%, rgba(226, 232, 240, 0.88) 100%);
+    color: #0f172a;
+    border: 1px solid rgba(255, 255, 255, 0.98);
+    box-shadow: 0 14px 34px -12px rgba(15, 23, 42, 0.15), inset 0 1px 0 #ffffff;
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+}
+.kosmate-hero-card.km-glassy-v10-card::after {
+    background: radial-gradient(circle, rgba(148, 163, 184, 0.18), transparent 70%);
+}
+.kosmate-hero-card.km-glassy-v10-card .kosmate-hero-pill {
+    background: rgba(255, 255, 255, 0.82);
+    color: #1e293b;
+    border: 1px solid rgba(203, 213, 225, 0.85);
+}
+
+.kosmate-bottom-nav {
+    background: rgba(248, 250, 252, 0.90) !important;
+    border-top: 1px solid rgba(226, 232, 240, 0.95) !important;
+}
+.kosmate-nav-item.active {
+    color: #0f172a !important;
+    font-weight: 800;
+}
+.kosmate-fab-btn {
+    background: linear-gradient(135deg, #334155 0%, #0f172a 100%) !important;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.35) !important;
+}
+
+/* Mobile Live Tank Matrix (Dense 4-Column View for More Tanks Visible) */
+.km-tank-matrix-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.42rem;
+}
+.km-tank-tile {
+    background: rgba(255, 255, 255, 0.86);
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    border-radius: 12px;
+    padding: 0.42rem 0.38rem;
+    text-align: left;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    cursor: pointer;
+}
+.km-tank-tile:active {
+    transform: scale(0.96);
+}
+
+/* Stock Layout Visualization Responsive Grid (5 tanks/row on mobile, auto-fill on desktop) */
+.stockms-stock-layout-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+    gap: 1.5rem 0.85rem;
+    justify-items: center;
+}
+@media (max-width: 768px) {
+    .stockms-stock-layout-grid {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 0.95rem 0.35rem;
+    }
+    .stockms-stock-tank-card {
+        width: 100% !important;
+        max-width: 68px;
+    }
+    .stockms-stock-tank-card .tank-3d-wrapper {
+        width: 44px;
+        margin: 0 auto;
+    }
+    .stockms-stock-tank-card .tank-3d {
+        width: 44px;
+        height: 62px !important;
+    }
+}
+
+/* Daily Report Mobile Table Scroll + Full Vertical Zone Tank IDs */
+.stockms-daily-table-scroll {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
+    overscroll-behavior-x: contain;
+}
+.stockms-zone-grid-scroll {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.4rem;
+}
+.stockms-zone-tank-id {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    white-space: nowrap;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1.05;
+    margin-top: 6px;
+    padding: 3px 1px;
+    color: #334155;
+    display: inline-block;
+    user-select: text;
+}
+
+/* Desktop Categorized Navbar Guide Lines & Online Presence Pills */
+.stockms-nav-divider {
+    width: 1px;
+    height: 24px;
+    background: linear-gradient(180deg, transparent, rgba(148, 163, 184, 0.7), transparent);
+    margin: 0 0.2rem;
+    flex-shrink: 0;
+}
+.stockms-nav-group {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.45rem;
+    border-radius: 0.9rem;
+    background: rgba(248, 250, 252, 0.72);
+    border: 1px solid rgba(226, 232, 240, 0.9);
+}
+.stockms-nav-group-label {
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+    padding: 0 0.25rem;
+    white-space: nowrap;
+}
+.stockms-online-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.18rem 0.5rem;
+    border-radius: 9999px;
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    color: #065f46;
+    font-size: 10px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+/* Ensure full-screen app modals sit cleanly above mobile bottom navigation bar */
+#dailyReportModal,
+#stockLayoutModal,
+#auditReportModal,
+#masterSetupModal,
+#reconcileModal,
+#qcAnomalyModal {
+    z-index: 8600 !important;
+}
+

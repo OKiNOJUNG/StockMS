@@ -286,30 +286,39 @@
                 </div>
             </div>
 
-            <div class="flex items-center gap-2.5 flex-wrap">
-                <!-- QC Quality Monitoring Button with Live Badge -->
-                <button id="btnQcHeaderMonitor" onclick="openQCAnomalyModal('trend')" class="btn-glass px-3.5 py-2 bg-gradient-to-r from-rose-500/10 via-amber-500/10 to-indigo-500/10 hover:from-rose-500/20 hover:via-amber-500/20 hover:to-indigo-500/20 text-rose-700 dark:text-rose-300 border border-rose-300/70 dark:border-rose-700/60 rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-sm relative group cursor-pointer" title="เปิดศูนย์เฝ้าระวังคุณภาพน้ำสุรา 40° & 70° (QC Anomaly & Trend Monitoring)">
-                    <span class="relative flex h-2.5 w-2.5">
-                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                        <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
-                    </span>
-                    <span class="font-extrabold tracking-tight">เฝ้าระวังคุณภาพ (QC)</span>
-                    <span id="navQcIssueBadge" class="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white shadow-sm shadow-rose-500/30 tabular-nums">0</span>
-                </button>
+            <div class="flex items-center gap-2 flex-wrap">
+                <!-- Group 1: ระบบงาน & คุณภาพ -->
+                <div class="stockms-nav-group">
+                    <span class="stockms-nav-group-label hidden 2xl:inline">ระบบ &amp; QC</span>
+                    <button id="btnQcHeaderMonitor" onclick="openQCAnomalyModal('trend')" class="btn-glass px-3 py-1.5 bg-gradient-to-r from-rose-500/10 via-amber-500/10 to-indigo-500/10 hover:from-rose-500/20 hover:via-amber-500/20 hover:to-indigo-500/20 text-rose-700 border border-rose-300/70 rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-sm relative group cursor-pointer" title="เปิดศูนย์เฝ้าระวังคุณภาพน้ำสุรา 40° & 70° (QC Anomaly & Trend Monitoring)">
+                        <span class="relative flex h-2.5 w-2.5">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+                        </span>
+                        <span class="font-extrabold tracking-tight">เฝ้าระวังคุณภาพ (QC)</span>
+                        <span id="navQcIssueBadge" class="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white shadow-sm shadow-rose-500/30 tabular-nums">0</span>
+                    </button>
 
-                <a href="index.html" class="btn-glass px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/60 rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-sm">
-                    <i class="fas fa-tasks"></i> ระบบจัดการ (Stock Control)
-                </a>
-
-                <div class="text-[11px] font-bold text-slate-600 dark:text-slate-300 bg-white/70 dark:bg-slate-800/70 px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60 flex items-center gap-1.5 shadow-sm">
-                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span>อัปเดตล่าสุด:</span>
-                    <span id="lastTime" class="text-slate-800 dark:text-slate-100 font-extrabold">-</span>
+                    <a href="index.html" class="btn-glass px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
+                        <i class="fas fa-tasks"></i> ระบบจัดการ (Stock Control)
+                    </a>
                 </div>
 
-                <button onclick="updateAllData()" class="btn-glass px-3.5 py-2 bg-white/70 hover:bg-white text-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-slate-200/80 dark:border-slate-700/60 shadow-sm" title="รีเฟรชข้อมูล">
-                    <i class="fas fa-sync-alt text-indigo-500"></i> รีเฟรช
-                </button>
+                <div class="stockms-nav-divider hidden md:block" aria-hidden="true"></div>
+
+                <!-- Group 2: สถานะและการซิงค์ -->
+                <div class="stockms-nav-group">
+                    <span class="stockms-nav-group-label hidden 2xl:inline">สถานะซิงค์</span>
+                    <div class="text-[11px] font-bold text-slate-600 bg-white/80 px-2.5 py-1.5 rounded-xl border border-slate-200/80 flex items-center gap-1.5 shadow-sm">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span>อัปเดตล่าสุด:</span>
+                        <span id="lastTime" class="text-slate-800 font-extrabold">-</span>
+                    </div>
+
+                    <button onclick="updateAllData()" class="btn-glass px-3 py-1.5 bg-white/80 hover:bg-white text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-slate-200/80 shadow-sm" title="รีเฟรชข้อมูล">
+                        <i class="fas fa-sync-alt text-indigo-500"></i> รีเฟรช
+                    </button>
+                </div>
             </div>
         </div>
     </nav>
@@ -617,6 +626,171 @@
                 </div>
                 <div class="chart-container-standard flex-1">
                     <canvas id="qcRadarChart40"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Row: Custom Multi-Degree QC Time-Series Comparison Chart (Starts Blank) -->
+        <div class="glass-card rounded-3xl p-5 sm:p-6 border border-white/60 shadow-sm">
+            <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 mb-4 pb-4 border-b border-slate-100">
+                <div>
+                    <h3 class="text-sm sm:text-base font-extrabold text-slate-800 flex items-center gap-2">
+                        <span class="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-500 text-white flex items-center justify-center shadow-sm"><i class="fas fa-chart-line"></i></span>
+                        <span>กราฟเปรียบเทียบผลวิเคราะห์คุณภาพสุราแต่ละดีกรีตามช่วงเวลา (Custom Multi-Degree QC Comparator)</span>
+                    </h3>
+                    <p class="text-[11px] text-slate-500 mt-1">เลือกดีกรีสุรา พารามิเตอร์ตรวจวัด (เลือกเทียบได้หลายค่าพร้อมกันหรือเพิ่มพารามิเตอร์ใหม่) และช่วงวันที่ เพื่อเปรียบเทียบลงบนกราฟ</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button type="button" id="btnQcCompAddParam" onclick="openCustomQcParamModal()" class="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 text-xs font-extrabold transition flex items-center gap-1.5 cursor-pointer"><i class="fas fa-plus-circle"></i><span>เพิ่มพารามิเตอร์วิเคราะห์</span></button>
+                    <button type="button" id="btnQcCompSelectAll" onclick="selectAllQcCompDegrees()" class="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold transition cursor-pointer">เลือกทุกดีกรี</button>
+                    <button type="button" id="btnQcCompClear" onclick="clearQcCompChart()" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-bold transition cursor-pointer"><i class="fas fa-eraser mr-1"></i>ล้างกราฟว่าง</button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 p-3.5 rounded-2xl bg-slate-50/90 border border-slate-200/80 mb-4">
+                <div class="lg:col-span-5">
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                        <label class="block text-[10px] font-bold uppercase text-slate-500">พารามิเตอร์ผลวิเคราะห์ (คลิกเลือกเทียบได้มากกว่า 1 ค่า)</label>
+                        <label class="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 cursor-pointer" title="เมื่อเทียบหลายพารามิเตอร์ที่มีหน่วยต่างกัน จะแปลงเป็น % ของค่า Target มาตรฐานให้เทียบสัดส่วนในกราฟเดียวกันได้ชัดเจน">
+                            <input type="checkbox" id="qcCompNormalizePct" onchange="renderCustomQcCompareChart()" class="w-3.5 h-3.5 rounded text-indigo-600">
+                            <span>เทียบ % มาตรฐาน (Target=100%)</span>
+                        </label>
+                    </div>
+                    <div id="qcCompParamPills" class="flex flex-wrap items-center gap-1.5"></div>
+                </div>
+
+                <div class="lg:col-span-4">
+                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">เลือกดีกรีที่ต้องการนำมาเทียบ</label>
+                    <div id="qcCompDegreePills" class="flex flex-wrap items-center gap-1.5">
+                        <button type="button" data-deg="70" onclick="toggleQcCompDegree('70')" class="qc-comp-deg-pill px-3 py-1.5 rounded-xl border border-emerald-300 bg-white text-emerald-700 text-xs font-extrabold transition cursor-pointer">70° ดีกรีสูง</button>
+                        <button type="button" data-deg="40" onclick="toggleQcCompDegree('40')" class="qc-comp-deg-pill px-3 py-1.5 rounded-xl border border-amber-300 bg-white text-amber-700 text-xs font-extrabold transition cursor-pointer">40°</button>
+                        <button type="button" data-deg="35" onclick="toggleQcCompDegree('35')" class="qc-comp-deg-pill px-3 py-1.5 rounded-xl border border-sky-300 bg-white text-sky-700 text-xs font-extrabold transition cursor-pointer">35°</button>
+                        <button type="button" data-deg="30" onclick="toggleQcCompDegree('30')" class="qc-comp-deg-pill px-3 py-1.5 rounded-xl border border-purple-300 bg-white text-purple-700 text-xs font-extrabold transition cursor-pointer">30°</button>
+                        <button type="button" data-deg="28" onclick="toggleQcCompDegree('28')" class="qc-comp-deg-pill px-3 py-1.5 rounded-xl border border-pink-300 bg-white text-pink-700 text-xs font-extrabold transition cursor-pointer">28°</button>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-3 flex flex-col justify-between">
+                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">ช่วงเวลา &amp; เส้นมาตรฐาน</label>
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        <input type="date" id="qcCompStartDate" onchange="renderCustomQcCompareChart()" class="px-2 py-1.5 rounded-xl border border-slate-300 bg-white text-[11px] font-bold text-slate-700">
+                        <span class="text-xs text-slate-400 font-bold">ถึง</span>
+                        <input type="date" id="qcCompEndDate" onchange="renderCustomQcCompareChart()" class="px-2 py-1.5 rounded-xl border border-slate-300 bg-white text-[11px] font-bold text-slate-700">
+                        <button type="button" onclick="setQcCompPresetRange(30)" class="px-2 py-1 rounded-lg bg-white border border-slate-300 text-[10px] font-bold hover:bg-slate-100 cursor-pointer">30วัน</button>
+                        <button type="button" onclick="setQcCompPresetRange(90)" class="px-2 py-1 rounded-lg bg-white border border-slate-300 text-[10px] font-bold hover:bg-slate-100 cursor-pointer">90วัน</button>
+                        <button type="button" onclick="setQcCompPresetRange(0)" class="px-2 py-1 rounded-lg bg-white border border-slate-300 text-[10px] font-bold hover:bg-slate-100 cursor-pointer">ทั้งหมด</button>
+                        <label class="inline-flex items-center gap-1 text-[11px] font-bold text-slate-600 ml-1 cursor-pointer">
+                            <input type="checkbox" id="qcCompShowStd" onchange="renderCustomQcCompareChart()" checked class="w-3.5 h-3.5 rounded text-indigo-600">
+                            <span>เส้น Target</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="relative h-80 sm:h-96 w-full rounded-2xl bg-white/80 border border-slate-200/80 p-3">
+                <canvas id="customQcCompareChart"></canvas>
+                <div id="qcCompEmptyOverlay" class="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-slate-50/75 rounded-2xl backdrop-blur-[2px]">
+                    <div class="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center text-xl mb-2.5 shadow-sm">
+                        <i class="fas fa-chart-area"></i>
+                    </div>
+                    <div class="text-sm font-extrabold text-slate-700">กราฟว่างพร้อมเทียบผลวิเคราะห์</div>
+                    <p class="text-xs text-slate-500 mt-1 max-w-md">กรุณาคลิกเลือกดีกรีสุราด้านบน (70°, 40°, 35°, 30°, 28°) และเลือกพารามิเตอร์ที่ต้องการเปรียบเทียบ</p>
+                </div>
+            </div>
+
+            <div id="qcCompSummaryCards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 mt-3"></div>
+        </div>
+
+        <!-- Modal: Add Custom QC Analysis Parameter & Log Custom Readings -->
+        <div id="customQcParamModal" class="hidden fixed inset-0 z-[8600] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+            <div class="w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-auto">
+                <div class="px-5 py-4 bg-gradient-to-r from-emerald-700 to-teal-600 text-white flex items-center justify-between">
+                    <div class="flex items-center gap-2.5">
+                        <span class="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center"><i class="fas fa-vials"></i></span>
+                        <div>
+                            <h4 class="text-sm sm:text-base font-extrabold">จัดการและเพิ่มพารามิเตอร์ผลวิเคราะห์ (Custom QC Parameters)</h4>
+                            <p class="text-[11px] text-emerald-100">สร้างหัวข้อตรวจวัดเพิ่มเติมและบันทึกผล Lab รายวันเพื่อนำมาเทียบในกราฟ Comparator</p>
+                        </div>
+                    </div>
+                    <button type="button" onclick="closeCustomQcParamModal()" class="w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white cursor-pointer"><i class="fas fa-times"></i></button>
+                </div>
+
+                <div class="p-5 space-y-5 max-h-[80vh] overflow-y-auto text-xs">
+                    <!-- Section 1: Define New Parameter -->
+                    <div class="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-3">
+                        <div class="font-extrabold text-emerald-900 flex items-center gap-1.5">
+                            <i class="fas fa-plus-circle text-emerald-600"></i>
+                            <span>1. เพิ่มพารามิเตอร์ผลวิเคราะห์ใหม่</span>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-600 mb-1">ชื่อพารามิเตอร์ *</label>
+                                <input type="text" id="newQcParamName" placeholder="เช่น เมทานอล (Methanol)" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-bold text-slate-800 outline-none focus:border-emerald-500">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-600 mb-1">หน่วยวัด (Unit)</label>
+                                <input type="text" id="newQcParamUnit" placeholder="เช่น mg/L, ppm, Abs" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-bold text-slate-800 outline-none focus:border-emerald-500">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-600 mb-1">ค่าเป้าหมาย (Target)</label>
+                                <input type="number" step="any" id="newQcParamTarget" placeholder="เช่น 50 (ไม่บังคับ)" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-bold text-slate-800 outline-none focus:border-emerald-500">
+                            </div>
+                        </div>
+                        <div class="flex justify-end">
+                            <button type="button" onclick="addCustomQcParameter()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold transition shadow-sm cursor-pointer">
+                                <i class="fas fa-check mr-1"></i>สร้างและเพิ่มลงตัวเลือกกราฟ
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Section 2: Log Measurement Value -->
+                    <div class="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-3">
+                        <div class="font-extrabold text-indigo-900 flex items-center gap-1.5">
+                            <i class="fas fa-edit text-indigo-600"></i>
+                            <span>2. บันทึกผลวิเคราะห์เพิ่มเติมเพื่อพล็อตลงกราฟ</span>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+                            <div class="sm:col-span-2">
+                                <label class="block text-[10px] font-bold text-slate-600 mb-1">พารามิเตอร์</label>
+                                <select id="customQcReadingParam" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-bold text-slate-800 outline-none"></select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-600 mb-1">ดีกรีสุรา</label>
+                                <select id="customQcReadingDegree" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-bold text-slate-800 outline-none">
+                                    <option value="70">70° ดีกรีสูง</option>
+                                    <option value="40">40°</option>
+                                    <option value="35">35°</option>
+                                    <option value="30">30°</option>
+                                    <option value="28">28°</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-600 mb-1">วันที่ตรวจ</label>
+                                <input type="date" id="customQcReadingDate" class="w-full px-2.5 py-2 rounded-xl border border-slate-300 bg-white font-bold text-slate-800 outline-none">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-end">
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-600 mb-1">ค่าผลวิเคราะห์ที่ตรวจได้ *</label>
+                                <input type="number" step="any" id="customQcReadingValue" placeholder="ระบุตัวเลขผลตรวจ" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-bold text-slate-800 outline-none focus:border-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-600 mb-1">ถัง / Batch อ้างอิง</label>
+                                <input type="text" id="customQcReadingNote" placeholder="เช่น T101 / Batch B25" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-bold text-slate-800 outline-none">
+                            </div>
+                            <div>
+                                <button type="button" onclick="saveCustomQcReading()" class="w-full px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold transition shadow-sm cursor-pointer">
+                                    <i class="fas fa-save mr-1"></i>บันทึกผลตรวจ
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Section 3: Recent Custom Readings List -->
+                    <div>
+                        <div class="text-[11px] font-extrabold text-slate-700 mb-2">รายการผลตรวจที่บันทึกเพิ่มเติม</div>
+                        <div id="customQcReadingsList" class="max-h-44 overflow-y-auto space-y-1.5 pr-1"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1488,6 +1662,7 @@
 
             renderForecastChart(days, forecastData);
             renderRadarCharts(txs, tankStates);
+            renderCustomQcCompareChart(txs);
             renderAgeChart(tankStates);
 
             const zoneStats = {};
@@ -2408,7 +2583,9 @@ Batch: ${l.batch || '-'}
 
         function hasAnyRealQCData(qcData) {
             if (!qcData || typeof qcData !== 'object') return false;
-            const params = ['degree', 'ph', 'acid', 'aldehyde', 'fusel', 'turbidity'];
+            const customLimits = getCustomQCLimits();
+            const extraKeys = Object.keys(customLimits.__extraParams || {});
+            const params = ['degree', 'ph', 'acid', 'aldehyde', 'fusel', 'turbidity', ...extraKeys];
             return params.some(p => isValidRealQCNumeric(qcData[p]));
         }
 
@@ -3872,11 +4049,519 @@ Batch: ${l.batch || '-'}
             }
         }
 
+        // =========================================================================
+        // Custom Blank Multi-Degree & Multi-Parameter QC Time-Series Comparator
+        // =========================================================================
+        let customQcCompareChartInstance = null;
+        const selectedQcCompDegrees = new Set(); // Starts empty (blank chart until user picks degrees)
+        const selectedQcCompParams = new Set(['degree']); // Supports multi-parameter comparison
+        const QC_DEGREE_PALETTE = {
+            '70': { label: '70° ดีกรีสูง', color: '#10b981', bg: 'rgba(16, 185, 129, 0.16)' },
+            '40': { label: '40° สุราขาว', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.16)' },
+            '35': { label: '35° สุราขาว', color: '#0ea5e9', bg: 'rgba(14, 165, 233, 0.16)' },
+            '30': { label: '30° สุราขาว', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.16)' },
+            '28': { label: '28° สุราขาว', color: '#ec4899', bg: 'rgba(236, 72, 153, 0.16)' }
+        };
+        const BUILTIN_QC_PARAMS = [
+            { key: 'degree', label: 'ดีกรีแอลกอฮอล์', unit: '°' },
+            { key: 'ph', label: 'pH', unit: '' },
+            { key: 'acid', label: 'กรดรวม (Acid)', unit: '%' },
+            { key: 'aldehyde', label: 'แอลดีไฮด์', unit: 'mg/L' },
+            { key: 'fusel', label: 'ฟิวเซลออยล์', unit: 'mg/L' },
+            { key: 'turbidity', label: 'ความขุ่น', unit: 'NTU' }
+        ];
+        const QC_PARAM_STYLES = [
+            { dash: [], pointStyle: 'circle', accent: '#4f46e5' },
+            { dash: [6, 3], pointStyle: 'triangle', accent: '#0284c7' },
+            { dash: [2, 2], pointStyle: 'rect', accent: '#059669' },
+            { dash: [10, 4, 2, 4], pointStyle: 'rectRot', accent: '#d97706' },
+            { dash: [4, 4], pointStyle: 'star', accent: '#9333ea' },
+            { dash: [8, 2], pointStyle: 'crossRot', accent: '#e11d48' }
+        ];
+
+        function getAllQcParamDefs() {
+            const customLimits = getCustomQCLimits();
+            const extraMap = (customLimits && customLimits.__extraParams && typeof customLimits.__extraParams === 'object')
+                ? customLimits.__extraParams
+                : {};
+            const extraList = Object.values(extraMap).map(p => ({
+                key: p.key,
+                label: p.label,
+                unit: p.unit || '',
+                target: (p.target !== undefined && p.target !== null && p.target !== '') ? parseFloat(p.target) : null,
+                isCustom: true
+            }));
+            return [...BUILTIN_QC_PARAMS, ...extraList];
+        }
+
+        function renderQcCompParamPillsUI() {
+            const container = document.getElementById('qcCompParamPills');
+            const defs = getAllQcParamDefs();
+            const validKeys = new Set(defs.map(d => d.key));
+            Array.from(selectedQcCompParams).forEach(k => { if (!validKeys.has(k)) selectedQcCompParams.delete(k); });
+            if (selectedQcCompParams.size === 0 && defs.length) selectedQcCompParams.add(defs[0].key);
+
+            const esc = typeof window.escapeHtml === 'function' ? window.escapeHtml : (s => String(s || ''));
+            if (container) {
+                container.innerHTML = defs.map((p, idx) => {
+                    const active = selectedQcCompParams.has(p.key);
+                    const unitBadge = p.unit ? ` (${esc(p.unit)})` : '';
+                    const removeIcon = p.isCustom
+                        ? `<span onclick="event.stopPropagation(); deleteCustomQcParameter('${esc(p.key)}')" class="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full ${active ? 'bg-white/25 text-white hover:bg-rose-500' : 'bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white'} text-[9px] font-black transition" title="ลบพารามิเตอร์นี้"><i class="fas fa-times"></i></span>`
+                        : '';
+                    return `<button type="button" data-param="${esc(p.key)}" onclick="toggleQcCompParam('${esc(p.key)}')" class="px-2.5 py-1.5 rounded-xl border text-xs font-extrabold transition cursor-pointer inline-flex items-center gap-1 ${active ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-700 border-slate-300 hover:border-indigo-400'}">${p.isCustom ? '<i class="fas fa-flask text-[10px]"></i>' : ''}<span>${esc(p.label)}${unitBadge}</span>${removeIcon}</button>`;
+                }).join('');
+            }
+            updateModalReadingParamOptions();
+        }
+
+        function updateModalReadingParamOptions() {
+            const sel = document.getElementById('customQcReadingParam');
+            if (!sel) return;
+            const prev = sel.value;
+            const defs = getAllQcParamDefs();
+            const esc = typeof window.escapeHtml === 'function' ? window.escapeHtml : (s => String(s || ''));
+            sel.innerHTML = defs.map(p => `<option value="${esc(p.key)}">${esc(p.label)}${p.unit ? ' (' + esc(p.unit) + ')' : ''}${p.isCustom ? ' [กำหนดเอง]' : ''}</option>`).join('');
+            if (prev && defs.some(p => p.key === prev)) sel.value = prev;
+        }
+
+        function toggleQcCompParam(paramKey) {
+            const k = String(paramKey || '');
+            if (!k) return;
+            if (selectedQcCompParams.has(k)) {
+                if (selectedQcCompParams.size <= 1) {
+                    showToast('ต้องเลือกพารามิเตอร์อย่างน้อย 1 รายการ', 'info');
+                    return;
+                }
+                selectedQcCompParams.delete(k);
+            } else {
+                selectedQcCompParams.add(k);
+            }
+            renderQcCompParamPillsUI();
+            renderCustomQcCompareChart();
+        }
+
+        function renderCustomQcReadingsList() {
+            const wrap = document.getElementById('customQcReadingsList');
+            if (!wrap) return;
+            const limits = getCustomQCLimits();
+            const defs = getAllQcParamDefs();
+            const defMap = Object.fromEntries(defs.map(d => [d.key, d]));
+            const readingsMap = (limits.__extraReadings && typeof limits.__extraReadings === 'object') ? limits.__extraReadings : {};
+            const rows = [];
+            Object.entries(readingsMap).forEach(([pKey, list]) => {
+                if (!Array.isArray(list)) return;
+                list.forEach(item => rows.push({ ...item, paramKey: pKey }));
+            });
+            rows.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+            const esc = typeof window.escapeHtml === 'function' ? window.escapeHtml : (s => String(s || ''));
+            if (!rows.length) {
+                wrap.innerHTML = '<div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-center text-slate-400">ยังไม่มีรายการผลตรวจที่บันทึกเพิ่มเติม</div>';
+                return;
+            }
+            wrap.innerHTML = rows.slice(0, 30).map(r => {
+                const pDef = defMap[r.paramKey] || { label: r.paramKey, unit: '' };
+                return `<div class="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                    <div>
+                        <span class="font-extrabold text-indigo-700">${esc(pDef.label)}</span>
+                        <span class="mx-1.5 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">${esc(r.degreeKey)}°</span>
+                        <span class="text-slate-500">${esc(r.date)}</span>
+                        ${r.note ? `<span class="text-slate-400">• ${esc(r.note)}</span>` : ''}
+                    </div>
+                    <div class="flex items-center gap-2.5">
+                        <span class="font-black text-slate-800 tabular-nums">${esc(r.value)} ${esc(pDef.unit || '')}</span>
+                        <button type="button" onclick="deleteCustomQcReading('${esc(r.paramKey)}','${esc(r.id)}')" class="text-rose-500 hover:text-rose-700 cursor-pointer" title="ลบรายการ"><i class="fas fa-trash-alt"></i></button>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function openCustomQcParamModal() {
+            const modal = document.getElementById('customQcParamModal');
+            if (!modal) return;
+            const dateEl = document.getElementById('customQcReadingDate');
+            if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().split('T')[0];
+            updateModalReadingParamOptions();
+            renderCustomQcReadingsList();
+            modal.classList.remove('hidden');
+        }
+
+        function closeCustomQcParamModal() {
+            document.getElementById('customQcParamModal')?.classList.add('hidden');
+        }
+
+        function addCustomQcParameter() {
+            const nameEl = document.getElementById('newQcParamName');
+            const unitEl = document.getElementById('newQcParamUnit');
+            const targetEl = document.getElementById('newQcParamTarget');
+            const name = (nameEl?.value || '').trim();
+            if (!name) {
+                showToast('กรุณาระบุชื่อพารามิเตอร์ที่ต้องการเพิ่ม', 'warning');
+                return;
+            }
+            const unit = (unitEl?.value || '').trim();
+            const rawTarget = (targetEl?.value || '').trim();
+            const target = rawTarget !== '' && !isNaN(parseFloat(rawTarget)) ? parseFloat(rawTarget) : null;
+
+            const limits = getCustomQCLimits();
+            if (!limits.__extraParams || typeof limits.__extraParams !== 'object') limits.__extraParams = {};
+            const slugBase = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'param';
+            let key = `custom_${slugBase}`;
+            let n = 2;
+            while (limits.__extraParams[key] || BUILTIN_QC_PARAMS.some(b => b.key === key)) {
+                key = `custom_${slugBase}_${n++}`;
+            }
+            limits.__extraParams[key] = { key, label: name, unit, target };
+            saveCustomQCLimitsToStorage(limits);
+
+            selectedQcCompParams.add(key);
+            if (nameEl) nameEl.value = '';
+            if (unitEl) unitEl.value = '';
+            if (targetEl) targetEl.value = '';
+
+            renderQcCompParamPillsUI();
+            const readSel = document.getElementById('customQcReadingParam');
+            if (readSel) readSel.value = key;
+            renderCustomQcReadingsList();
+            renderCustomQcCompareChart();
+            showToast(`เพิ่มพารามิเตอร์ "${name}" เรียบร้อยแล้ว`, 'success');
+        }
+
+        function deleteCustomQcParameter(key) {
+            const limits = getCustomQCLimits();
+            if (!limits.__extraParams || !limits.__extraParams[key]) return;
+            const label = limits.__extraParams[key].label || key;
+            delete limits.__extraParams[key];
+            if (limits.__extraReadings) delete limits.__extraReadings[key];
+            selectedQcCompParams.delete(key);
+            saveCustomQCLimitsToStorage(limits);
+            renderQcCompParamPillsUI();
+            renderCustomQcReadingsList();
+            renderCustomQcCompareChart();
+            showToast(`ลบพารามิเตอร์ "${label}" แล้ว`, 'info');
+        }
+
+        function saveCustomQcReading() {
+            const pKey = document.getElementById('customQcReadingParam')?.value || '';
+            const degKey = document.getElementById('customQcReadingDegree')?.value || '70';
+            const dateVal = document.getElementById('customQcReadingDate')?.value || '';
+            const valRaw = document.getElementById('customQcReadingValue')?.value || '';
+            const note = (document.getElementById('customQcReadingNote')?.value || '').trim();
+            const valNum = parseFloat(valRaw);
+            if (!pKey || !dateVal || isNaN(valNum)) {
+                showToast('กรุณาระบุพารามิเตอร์ วันที่ และตัวเลขผลตรวจให้ครบ', 'warning');
+                return;
+            }
+            const limits = getCustomQCLimits();
+            if (!limits.__extraReadings || typeof limits.__extraReadings !== 'object') limits.__extraReadings = {};
+            if (!Array.isArray(limits.__extraReadings[pKey])) limits.__extraReadings[pKey] = [];
+            limits.__extraReadings[pKey].push({
+                id: 'r_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+                degreeKey: String(degKey),
+                date: String(dateVal).slice(0, 10),
+                value: valNum,
+                note
+            });
+            saveCustomQCLimitsToStorage(limits);
+
+            selectedQcCompParams.add(pKey);
+            selectedQcCompDegrees.add(String(degKey));
+            const valEl = document.getElementById('customQcReadingValue');
+            const noteEl = document.getElementById('customQcReadingNote');
+            if (valEl) valEl.value = '';
+            if (noteEl) noteEl.value = '';
+
+            renderQcCompParamPillsUI();
+            updateQcCompPillButtonsUI();
+            renderCustomQcReadingsList();
+            renderCustomQcCompareChart();
+            showToast('บันทึกผลวิเคราะห์ลงฐานข้อมูลเรียบร้อย', 'success');
+        }
+
+        function deleteCustomQcReading(paramKey, readingId) {
+            const limits = getCustomQCLimits();
+            if (!limits.__extraReadings || !Array.isArray(limits.__extraReadings[paramKey])) return;
+            limits.__extraReadings[paramKey] = limits.__extraReadings[paramKey].filter(x => x.id !== readingId);
+            saveCustomQCLimitsToStorage(limits);
+            renderCustomQcReadingsList();
+            renderCustomQcCompareChart();
+        }
+
+        function updateQcCompPillButtonsUI() {
+            document.querySelectorAll('#qcCompDegreePills .qc-comp-deg-pill').forEach(btn => {
+                const deg = btn.getAttribute('data-deg');
+                const pal = QC_DEGREE_PALETTE[deg];
+                if (selectedQcCompDegrees.has(deg) && pal) {
+                    btn.style.backgroundColor = pal.color;
+                    btn.style.borderColor = pal.color;
+                    btn.style.color = '#ffffff';
+                    btn.classList.add('shadow-sm');
+                } else {
+                    btn.style.backgroundColor = '';
+                    btn.style.borderColor = '';
+                    btn.style.color = '';
+                    btn.classList.remove('shadow-sm');
+                }
+            });
+        }
+
+        function toggleQcCompDegree(deg) {
+            const key = String(deg);
+            if (selectedQcCompDegrees.has(key)) selectedQcCompDegrees.delete(key);
+            else selectedQcCompDegrees.add(key);
+            updateQcCompPillButtonsUI();
+            renderCustomQcCompareChart();
+        }
+
+        function selectAllQcCompDegrees() {
+            ['70', '40', '35', '30', '28'].forEach(d => selectedQcCompDegrees.add(d));
+            updateQcCompPillButtonsUI();
+            renderCustomQcCompareChart();
+        }
+
+        function clearQcCompChart() {
+            selectedQcCompDegrees.clear();
+            selectedQcCompParams.clear();
+            selectedQcCompParams.add('degree');
+            const s = document.getElementById('qcCompStartDate');
+            const e = document.getElementById('qcCompEndDate');
+            if (s) s.value = '';
+            if (e) e.value = '';
+            renderQcCompParamPillsUI();
+            updateQcCompPillButtonsUI();
+            renderCustomQcCompareChart();
+        }
+
+        function setQcCompPresetRange(daysBack) {
+            const s = document.getElementById('qcCompStartDate');
+            const e = document.getElementById('qcCompEndDate');
+            if (!daysBack || daysBack <= 0) {
+                if (s) s.value = '';
+                if (e) e.value = '';
+            } else {
+                const end = new Date();
+                const start = new Date();
+                start.setDate(end.getDate() - daysBack);
+                if (s) s.value = start.toISOString().split('T')[0];
+                if (e) e.value = end.toISOString().split('T')[0];
+            }
+            renderCustomQcCompareChart();
+        }
+
+        function renderCustomQcCompareChart(explicitTxs) {
+            const canvas = document.getElementById('customQcCompareChart');
+            if (!canvas || typeof Chart === 'undefined') return;
+            renderQcCompParamPillsUI();
+            updateQcCompPillButtonsUI();
+
+            const overlay = document.getElementById('qcCompEmptyOverlay');
+            const summaryGrid = document.getElementById('qcCompSummaryCards');
+            const startDate = document.getElementById('qcCompStartDate')?.value || '';
+            const endDate = document.getElementById('qcCompEndDate')?.value || '';
+            const showStd = !!document.getElementById('qcCompShowStd')?.checked;
+            const normalizePct = !!document.getElementById('qcCompNormalizePct')?.checked;
+            const paramKeys = Array.from(selectedQcCompParams);
+            const defs = getAllQcParamDefs();
+            const defMap = Object.fromEntries(defs.map(d => [d.key, d]));
+
+            if (selectedQcCompDegrees.size === 0 || paramKeys.length === 0) {
+                if (customQcCompareChartInstance) {
+                    customQcCompareChartInstance.destroy();
+                    customQcCompareChartInstance = null;
+                }
+                if (overlay) {
+                    overlay.querySelector('.text-sm').textContent = 'กราฟว่างพร้อมเทียบผลวิเคราะห์';
+                    overlay.classList.remove('hidden');
+                }
+                if (summaryGrid) summaryGrid.innerHTML = '';
+                return;
+            }
+
+            const txs = Array.isArray(explicitTxs) ? explicitTxs : (loadData().txs || []);
+            const customLimits = getCustomQCLimits();
+            const extraReadingsMap = (customLimits.__extraReadings && typeof customLimits.__extraReadings === 'object') ? customLimits.__extraReadings : {};
+            const normDate = (dStr) => {
+                let s = String(dStr || '').trim();
+                if (s.startsWith('2569-')) s = '2026-' + s.substring(5);
+                return s.slice(0, 10);
+            };
+
+            // Map: pointsByParamDegDate[paramKey][degKey][date] = [val...]
+            const pointsByParamDegDate = {};
+            const allDatesSet = new Set();
+
+            const addPoint = (pKey, degKey, d, val) => {
+                if (!d || isNaN(val)) return;
+                if (startDate && d < startDate) return;
+                if (endDate && d > endDate) return;
+                if (!selectedQcCompDegrees.has(degKey)) return;
+                allDatesSet.add(d);
+                if (!pointsByParamDegDate[pKey]) pointsByParamDegDate[pKey] = {};
+                if (!pointsByParamDegDate[pKey][degKey]) pointsByParamDegDate[pKey][degKey] = {};
+                if (!pointsByParamDegDate[pKey][degKey][d]) pointsByParamDegDate[pKey][degKey][d] = [];
+                pointsByParamDegDate[pKey][degKey][d].push(val);
+            };
+
+            (txs || []).forEach(tx => {
+                if (!tx || !tx.qcData) return;
+                const d = normDate(tx.date);
+                const degKey = determineDegreeAndBuilding(tx).degreeKey;
+                paramKeys.forEach(pKey => {
+                    const rawVal = tx.qcData[pKey];
+                    const val = parseFloat(rawVal);
+                    if (isValidRealQCNumeric(rawVal) && !isNaN(val)) {
+                        addPoint(pKey, degKey, d, val);
+                    }
+                });
+            });
+
+            paramKeys.forEach(pKey => {
+                const list = extraReadingsMap[pKey];
+                if (!Array.isArray(list)) return;
+                list.forEach(item => {
+                    const val = parseFloat(item.value);
+                    if (!isNaN(val)) addPoint(pKey, String(item.degreeKey || '70'), normDate(item.date), val);
+                });
+            });
+
+            const labels = Array.from(allDatesSet).sort();
+            const datasets = [];
+            const summaryHtml = [];
+            const isMultiParam = paramKeys.length > 1;
+            const esc = typeof window.escapeHtml === 'function' ? window.escapeHtml : (s => String(s || ''));
+
+            paramKeys.forEach((pKey, pIdx) => {
+                const pDef = defMap[pKey] || { key: pKey, label: pKey, unit: '', target: null };
+                const pStyle = QC_PARAM_STYLES[pIdx % QC_PARAM_STYLES.length];
+                const byDeg = pointsByParamDegDate[pKey] || {};
+
+                Array.from(selectedQcCompDegrees).sort((a, b) => Number(b) - Number(a)).forEach(deg => {
+                    const pal = QC_DEGREE_PALETTE[deg] || { label: `${deg}°`, color: '#64748b', bg: 'rgba(100,116,139,0.12)' };
+                    const stdParam = (typeof getEffectiveQCStandard === 'function') ? getEffectiveQCStandard(deg)?.params?.[pKey] : null;
+                    const targetVal = (stdParam && stdParam.target !== null && stdParam.target !== undefined)
+                        ? stdParam.target
+                        : (pDef.target !== null && pDef.target !== undefined ? pDef.target : null);
+
+                    const byDate = byDeg[deg] || {};
+                    const rawVals = [];
+                    const series = labels.map(d => {
+                        const arr = byDate[d];
+                        if (!arr || !arr.length) return null;
+                        const avg = arr.reduce((s, x) => s + x, 0) / arr.length;
+                        rawVals.push(avg);
+                        if (normalizePct && targetVal && targetVal > 0) {
+                            return Number(((avg / targetVal) * 100).toFixed(2));
+                        }
+                        return Number(avg.toFixed(4));
+                    });
+
+                    const datasetLabel = isMultiParam ? `${pal.label} • ${pDef.label}` : pal.label;
+                    datasets.push({
+                        label: datasetLabel,
+                        data: series,
+                        borderColor: pal.color,
+                        backgroundColor: pal.bg,
+                        borderDash: isMultiParam ? pStyle.dash : [],
+                        pointStyle: isMultiParam ? pStyle.pointStyle : 'circle',
+                        borderWidth: 2.5,
+                        tension: 0.28,
+                        spanGaps: true,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    });
+
+                    if (showStd && labels.length > 0 && targetVal !== null && targetVal !== undefined) {
+                        const refLineVal = (normalizePct && targetVal > 0) ? 100 : targetVal;
+                        if (!normalizePct || pIdx === 0) {
+                            datasets.push({
+                                label: normalizePct ? `Target (100%)` : `Target ${deg}°${isMultiParam ? ' • ' + pDef.label : ''} (${targetVal})`,
+                                data: labels.map(() => refLineVal),
+                                borderColor: normalizePct ? '#64748b' : pal.color,
+                                borderDash: [6, 4],
+                                borderWidth: 1.4,
+                                pointRadius: 0,
+                                fill: false
+                            });
+                        }
+                    }
+
+                    const minV = rawVals.length ? Math.min(...rawVals).toFixed(3) : '-';
+                    const avgV = rawVals.length ? (rawVals.reduce((s, x) => s + x, 0) / rawVals.length).toFixed(3) : '-';
+                    const maxV = rawVals.length ? Math.max(...rawVals).toFixed(3) : '-';
+                    summaryHtml.push(`
+                        <div class="p-2.5 rounded-xl bg-white border border-slate-200 shadow-xs">
+                            <div class="flex items-center justify-between text-xs font-extrabold" style="color:${pal.color}">
+                                <span>${esc(datasetLabel)}</span>
+                                <span class="text-[10px] text-slate-500">${rawVals.length} วันตรวจ</span>
+                            </div>
+                            <div class="text-[11px] text-slate-600 mt-1 tabular-nums">เฉลี่ย: <b>${avgV}</b> ${esc(pDef.unit || '')} • Min/Max: ${minV} / ${maxV}</div>
+                        </div>
+                    `);
+                });
+            });
+
+            if (summaryGrid) summaryGrid.innerHTML = summaryHtml.join('');
+
+            if (labels.length === 0) {
+                if (customQcCompareChartInstance) {
+                    customQcCompareChartInstance.destroy();
+                    customQcCompareChartInstance = null;
+                }
+                if (overlay) {
+                    overlay.querySelector('.text-sm').textContent = 'ยังไม่มีผลตรวจ QC ตามช่วงวันที่ ดีกรี และพารามิเตอร์ที่เลือก';
+                    overlay.classList.remove('hidden');
+                }
+                return;
+            }
+
+            if (overlay) overlay.classList.add('hidden');
+            if (customQcCompareChartInstance) customQcCompareChartInstance.destroy();
+            const yAxisLabel = normalizePct
+                ? '% ของค่า Target มาตรฐาน (100% = ตามเกณฑ์)'
+                : paramKeys.map(k => defMap[k]?.label || k).join(' / ');
+
+            customQcCompareChartInstance = new Chart(canvas.getContext('2d'), {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { position: 'bottom', labels: { usePointStyle: true, font: { family: 'Sarabun', size: 11, weight: 'bold' } } },
+                        datalabels: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            title: { display: true, text: yAxisLabel, font: { family: 'Sarabun', size: 11, weight: 'bold' } },
+                            grid: { color: 'rgba(148, 163, 184, 0.16)' }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { family: 'Sarabun', size: 10 } }
+                        }
+                    }
+                }
+            });
+        }
+
         // Global exports for inline HTML onclick & external calls
         window.openQCAnomalyModal = openQCAnomalyModal;
         window.closeQCAnomalyModal = closeQCAnomalyModal;
         window.switchQCTab = switchQCTab;
         window.handleQCUrlRouting = handleQCUrlRouting;
+        window.toggleQcCompDegree = toggleQcCompDegree;
+        window.toggleQcCompParam = toggleQcCompParam;
+        window.openCustomQcParamModal = openCustomQcParamModal;
+        window.closeCustomQcParamModal = closeCustomQcParamModal;
+        window.addCustomQcParameter = addCustomQcParameter;
+        window.deleteCustomQcParameter = deleteCustomQcParameter;
+        window.saveCustomQcReading = saveCustomQcReading;
+        window.deleteCustomQcReading = deleteCustomQcReading;
+        window.selectAllQcCompDegrees = selectAllQcCompDegrees;
+        window.clearQcCompChart = clearQcCompChart;
+        window.setQcCompPresetRange = setQcCompPresetRange;
+        window.renderCustomQcCompareChart = renderCustomQcCompareChart;
 
         window.onload = function() {
             initTheme();

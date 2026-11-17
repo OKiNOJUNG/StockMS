@@ -345,65 +345,69 @@
                 </div>
             </div>
             
-            <!-- Quick Action Tools & System Controls (Clean Responsive Cluster) -->
+            <!-- Quick Action Tools & System Controls (Categorized Responsive Clusters with Guide Lines) -->
             <div class="flex flex-wrap justify-center xl:justify-end items-center gap-1.5 sm:gap-2 w-full xl:w-auto">
                 <input type="file" id="importFile" accept=".json" class="hidden" onchange="importData(this)">
-                
-                <!-- Primary Action: QC System Navigation Link -->
-                <a href="dashboard.html?qc=open#qc-modal" class="btn-glass flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-rose-500/15 via-amber-500/15 to-indigo-500/15 hover:from-rose-500/25 hover:via-amber-500/25 hover:to-indigo-500/25 text-rose-700 dark:text-rose-300 rounded-xl text-xs font-bold border border-rose-300/60 dark:border-rose-700/50 shadow-sm transition whitespace-nowrap" title="เปิดศูนย์เฝ้าระวังคุณภาพน้ำสุรา 40° & 70° (QC Comparison Monitor)">
-                    <i class="fas fa-microscope text-rose-500"></i>
-                    <span>เฝ้าระวังคุณภาพ (QC)</span>
-                </a>
 
-                <!-- Stock Layout -->
-                <button onclick="openStockLayout()" class="btn-glass flex items-center gap-1.5 px-3 py-2 bg-slate-800/90 hover:bg-slate-900 text-white dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl text-xs font-semibold shadow-sm border border-slate-700/50 whitespace-nowrap">
-                    <i class="fas fa-th text-indigo-400"></i>
-                    <span>Stock Layout</span>
-                </button>
+                <!-- Group 1: คุณภาพ & ผังคลัง -->
+                <div class="stockms-nav-group">
+                    <span class="stockms-nav-group-label hidden 2xl:inline">คุณภาพ &amp; ผังถัง</span>
+                    <a href="dashboard.html?qc=open#qc-modal" class="btn-glass flex items-center gap-1.5 px-2.5 py-1.5 bg-gradient-to-r from-rose-500/15 via-amber-500/15 to-indigo-500/15 hover:from-rose-500/25 hover:via-amber-500/25 hover:to-indigo-500/25 text-rose-700 rounded-xl text-xs font-bold border border-rose-300/60 shadow-sm transition whitespace-nowrap" title="เปิดศูนย์เฝ้าระวังคุณภาพน้ำสุรา 40° & 70° (QC Comparison Monitor)">
+                        <i class="fas fa-microscope text-rose-500"></i>
+                        <span>เฝ้าระวังคุณภาพ (QC)</span>
+                    </a>
+                    <button onclick="openStockLayout()" class="btn-glass flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800/90 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold shadow-sm border border-slate-700/50 whitespace-nowrap">
+                        <i class="fas fa-th text-indigo-400"></i>
+                        <span>Stock Layout</span>
+                    </button>
+                </div>
 
-                <!-- Audit Trail -->
-                <button onclick="openAuditReport()" class="btn-glass flex items-center gap-1.5 px-3 py-2 bg-teal-600/90 hover:bg-teal-700 text-white rounded-xl text-xs font-semibold shadow-sm shadow-teal-500/15 border border-teal-500/40 whitespace-nowrap">
-                    <i class="fas fa-search-location"></i>
-                    <span>Audit Trail</span>
-                </button>
+                <div class="stockms-nav-divider hidden md:block" aria-hidden="true"></div>
 
-                <!-- Reconcile -->
-                <button onclick="openReconcileModal()" class="btn-glass flex items-center gap-1.5 px-3 py-2 bg-pink-600/90 hover:bg-pink-700 text-white rounded-xl text-xs font-semibold shadow-sm shadow-pink-500/15 border border-pink-500/40 whitespace-nowrap">
-                    <i class="fas fa-balance-scale"></i>
-                    <span>ปรับเทียบยอด</span>
-                </button>
+                <!-- Group 2: รายงาน & ตรวจสอบ -->
+                <div class="stockms-nav-group">
+                    <span class="stockms-nav-group-label hidden 2xl:inline">รายงาน &amp; ตรวจยอด</span>
+                    <button onclick="openDailyReport()" class="btn-glass flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-600/90 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-sm shadow-indigo-500/20 border border-indigo-500/40 whitespace-nowrap">
+                        <i class="fas fa-file-alt"></i>
+                        <span>Daily Report</span>
+                    </button>
+                    <button onclick="openAuditReport()" class="btn-glass flex items-center gap-1.5 px-2.5 py-1.5 bg-teal-600/90 hover:bg-teal-700 text-white rounded-xl text-xs font-semibold shadow-sm shadow-teal-500/15 border border-teal-500/40 whitespace-nowrap">
+                        <i class="fas fa-search-location"></i>
+                        <span>Audit Trail</span>
+                    </button>
+                    <button onclick="openReconcileModal()" class="btn-glass flex items-center gap-1.5 px-2.5 py-1.5 bg-pink-600/90 hover:bg-pink-700 text-white rounded-xl text-xs font-semibold shadow-sm shadow-pink-500/15 border border-pink-500/40 whitespace-nowrap">
+                        <i class="fas fa-balance-scale"></i>
+                        <span>ปรับเทียบยอด</span>
+                    </button>
+                </div>
 
-                <!-- Daily Report -->
-                <button onclick="openDailyReport()" class="btn-glass flex items-center gap-1.5 px-3 py-2 bg-indigo-600/90 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-sm shadow-indigo-500/20 border border-indigo-500/40 whitespace-nowrap">
-                    <i class="fas fa-file-alt"></i>
-                    <span>Daily Report</span>
-                </button>
+                <div class="stockms-nav-divider hidden md:block" aria-hidden="true"></div>
 
-                <!-- Master Setup -->
-                <button onclick="openMasterSettingsModal()" class="btn-glass flex items-center gap-1.5 px-3 py-2 bg-amber-500/15 hover:bg-amber-500/25 text-amber-800 dark:text-amber-300 rounded-xl text-xs font-bold transition border border-amber-300/60 dark:border-amber-700/50 shadow-sm whitespace-nowrap">
-                    <i class="fas fa-cogs text-amber-600 dark:text-amber-400"></i>
-                    <span>ตั้งค่าระบบ</span>
-                </button>
+                <!-- Group 3: โครงสร้างคลัง -->
+                <div class="stockms-nav-group">
+                    <span class="stockms-nav-group-label hidden 2xl:inline">ตั้งค่าถัง</span>
+                    <button onclick="openMasterSettingsModal()" class="btn-glass flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-800 rounded-xl text-xs font-bold transition border border-amber-300/60 shadow-sm whitespace-nowrap">
+                        <i class="fas fa-cogs text-amber-600"></i>
+                        <span>ตั้งค่าระบบ</span>
+                    </button>
+                    <button onclick="manageTankSettings()" class="btn-glass flex items-center gap-1.5 px-2.5 py-1.5 bg-purple-500/15 hover:bg-purple-500/25 text-purple-800 rounded-xl text-xs font-semibold transition border border-purple-300/60 shadow-sm whitespace-nowrap">
+                        <i class="fas fa-tools text-purple-600"></i>
+                        <span>ปรับปรุง/ทัณฑ์บน</span>
+                    </button>
+                </div>
 
-                <!-- Maintenance / Bonded -->
-                <button onclick="manageTankSettings()" class="btn-glass flex items-center gap-1.5 px-3 py-2 bg-purple-500/15 hover:bg-purple-500/25 text-purple-800 dark:text-purple-300 rounded-xl text-xs font-semibold transition border border-purple-300/60 dark:border-purple-700/50 shadow-sm whitespace-nowrap">
-                    <i class="fas fa-tools text-purple-600 dark:text-purple-400"></i>
-                    <span>ปรับปรุง/ทัณฑ์บน</span>
-                </button>
+                <div class="stockms-nav-divider hidden md:block" aria-hidden="true"></div>
 
-                <div class="h-6 w-px bg-slate-200 dark:bg-slate-700/80 mx-1 hidden xl:block"></div>
-
-                <!-- Backup & Import Cluster -->
-                <div class="flex items-center gap-1">
-                    <button onclick="document.getElementById('importFile').click()" title="นำเข้าข้อมูล (Import JSON)" class="btn-glass p-2 bg-white/70 hover:bg-white text-slate-600 dark:bg-slate-800/80 dark:text-slate-300 dark:hover:bg-slate-700 rounded-xl text-xs font-medium border border-slate-200/80 dark:border-slate-700/60 shadow-sm">
+                <!-- Group 4: จัดการข้อมูล JSON -->
+                <div class="stockms-nav-group">
+                    <span class="stockms-nav-group-label hidden 2xl:inline">Backup JSON</span>
+                    <button onclick="document.getElementById('importFile').click()" title="นำเข้าข้อมูล (Import JSON)" class="btn-glass px-2 py-1.5 bg-white/80 hover:bg-white text-slate-600 rounded-xl text-xs font-medium border border-slate-200/80 shadow-sm">
                         <i class="fas fa-file-import"></i>
                     </button>
-                    
-                    <button onclick="exportData()" title="สำรองข้อมูล (Backup JSON)" class="btn-glass p-2 bg-white/70 hover:bg-white text-slate-600 dark:bg-slate-800/80 dark:text-slate-300 dark:hover:bg-slate-700 rounded-xl text-xs font-medium border border-slate-200/80 dark:border-slate-700/60 shadow-sm">
+                    <button onclick="exportData()" title="สำรองข้อมูล (Backup JSON)" class="btn-glass px-2 py-1.5 bg-white/80 hover:bg-white text-slate-600 rounded-xl text-xs font-medium border border-slate-200/80 shadow-sm">
                         <i class="fas fa-file-export"></i>
                     </button>
-                    
-                    <button onclick="resetSystem()" title="ล้างข้อมูลระบบ (Clear Data)" class="btn-glass p-2 bg-red-50/80 hover:bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-400 dark:hover:bg-red-900/50 rounded-xl text-xs font-medium border border-red-200/80 dark:border-red-800/50 shadow-sm">
+                    <button onclick="resetSystem()" title="ล้างข้อมูลระบบ (Clear Data)" class="btn-glass px-2 py-1.5 bg-red-50/80 hover:bg-red-100 text-red-600 rounded-xl text-xs font-medium border border-red-200/80 shadow-sm">
                         <i class="fas fa-trash-alt"></i>
                     </button>
                 </div>
@@ -986,7 +990,7 @@
                      <button onclick="closeStockLayout()" class="btn-glass w-9 h-9 flex items-center justify-center rounded-full hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 text-slate-400 transition text-base"><i class="fas fa-times"></i></button>
                 </div>
             </div>
-            <div class="flex-grow overflow-y-auto p-6 space-y-8" id="layoutContent"></div>
+            <div class="flex-grow overflow-y-auto p-3 sm:p-6 space-y-6 sm:space-y-8" id="layoutContent"></div>
         </div>
     </div>
 
@@ -1009,11 +1013,14 @@
                 </div>
             </div>
 
-            <div class="p-4 sm:p-6 space-y-8 bg-slate-50/40 dark:bg-slate-950/40 min-h-full">
+            <div class="p-3 sm:p-6 space-y-6 sm:space-y-8 bg-slate-50/40 dark:bg-slate-950/40 min-h-full">
                 <!-- Summary Table -->
                 <div class="glass-panel rounded-2xl shadow-sm border border-slate-200/80 dark:border-slate-800/80 overflow-hidden">
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-[11px] text-center border-collapse">
+                    <div class="px-3 py-1.5 bg-indigo-50/70 border-b border-indigo-100 text-[10px] font-bold text-indigo-700 flex items-center justify-between md:hidden">
+                        <span><i class="fas fa-arrows-alt-h mr-1"></i> เลื่อนตารางแนวนอนซ้าย-ขวาเพื่อดูทุกคอลัมน์</span>
+                    </div>
+                    <div class="stockms-daily-table-scroll">
+                        <table id="dailyReportSummaryTable" class="w-full min-w-[980px] text-[11px] text-center border-collapse">
                             <thead class="bg-slate-100/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 font-bold uppercase tracking-wider">
                                 <tr class="border-b border-slate-200/80 dark:border-slate-700/60">
                                     <th rowspan="2" class="border-r border-slate-200/80 dark:border-slate-700/60 p-3 w-48">ชนิดสุรา</th>
@@ -5296,25 +5303,25 @@ const products = [
                 const fmt = (v) => v.toLocaleString(undefined, {minimumFractionDigits: 3, maximumFractionDigits: 3});
 
                 tr.innerHTML = `
-                    <td class="border-r p-2 text-left font-bold text-blue-800 text-[10px] whitespace-nowrap">${prod.name}</td>
-                    <td class="border-r p-2 text-slate-500 font-sans tabular-nums">${prod.deg}</td>
-                    <td class="border-r p-1 bg-slate-50"><input type="text" name="prevBal" class="w-full bg-transparent text-center p-1 text-slate-700 font-medium outline-none" value="${fmt(prevBal)}" onblur="handleInputBlur(this)" oninput="recalcRow(this)"></td>
+                    <td class="border-r p-2 text-left font-bold text-blue-800 text-[10px] whitespace-nowrap min-w-[148px]">${prod.name}</td>
+                    <td class="border-r p-2 text-slate-500 font-sans tabular-nums min-w-[44px]">${prod.deg}</td>
+                    <td class="border-r p-1 bg-slate-50 min-w-[78px]"><input type="text" name="prevBal" class="w-full min-w-[72px] bg-transparent text-center p-1 text-slate-700 font-medium outline-none" value="${fmt(prevBal)}" onblur="handleInputBlur(this)" oninput="recalcRow(this)"></td>
                     
-                    <td class="border-r p-1 bg-yellow-50/30"><input type="text" name="inDay" class="w-full bg-transparent text-center p-1 text-amber-700 font-bold outline-none" value="${fmt(dailyIn)}" onblur="handleInputBlur(this)" oninput="recalcRow(this)"></td>
-                    <td class="border-r p-1 bg-yellow-50/30"><input type="text" name="inMtd" class="w-full bg-transparent text-center p-1 text-amber-700 outline-none" value="${fmt(mtdIn)}" onblur="handleInputBlur(this)"></td>
-                    <td class="border-r p-1 bg-yellow-50/30"><input type="text" name="inYtd" class="w-full bg-transparent text-center p-1 text-amber-700 outline-none" value="${fmt(ytdIn)}" onblur="handleInputBlur(this)"></td>
+                    <td class="border-r p-1 bg-yellow-50/30 min-w-[76px]"><input type="text" name="inDay" class="w-full min-w-[70px] bg-transparent text-center p-1 text-amber-700 font-bold outline-none" value="${fmt(dailyIn)}" onblur="handleInputBlur(this)" oninput="recalcRow(this)"></td>
+                    <td class="border-r p-1 bg-yellow-50/30 min-w-[78px]"><input type="text" name="inMtd" class="w-full min-w-[72px] bg-transparent text-center p-1 text-amber-700 outline-none" value="${fmt(mtdIn)}" onblur="handleInputBlur(this)"></td>
+                    <td class="border-r p-1 bg-yellow-50/30 min-w-[78px]"><input type="text" name="inYtd" class="w-full min-w-[72px] bg-transparent text-center p-1 text-amber-700 outline-none" value="${fmt(ytdIn)}" onblur="handleInputBlur(this)"></td>
                     
-                    <td class="border-r p-1 bg-orange-50/30"><input type="text" name="outDay" class="w-full bg-transparent text-center p-1 text-orange-700 font-bold outline-none" value="${fmt(dailyOut)}" onblur="handleInputBlur(this)" oninput="recalcRow(this)"></td>
-                    <td class="border-r p-1 bg-orange-50/30"><input type="text" name="outMtd" class="w-full bg-transparent text-center p-1 text-orange-700 outline-none" value="${fmt(mtdOut)}" onblur="handleInputBlur(this)"></td>
-                    <td class="border-r p-1 bg-orange-50/30"><input type="text" name="outYtd" class="w-full bg-transparent text-center p-1 text-orange-700 outline-none" value="${fmt(ytdOut)}" onblur="handleInputBlur(this)"></td>
+                    <td class="border-r p-1 bg-orange-50/30 min-w-[76px]"><input type="text" name="outDay" class="w-full min-w-[70px] bg-transparent text-center p-1 text-orange-700 font-bold outline-none" value="${fmt(dailyOut)}" onblur="handleInputBlur(this)" oninput="recalcRow(this)"></td>
+                    <td class="border-r p-1 bg-orange-50/30 min-w-[78px]"><input type="text" name="outMtd" class="w-full min-w-[72px] bg-transparent text-center p-1 text-orange-700 outline-none" value="${fmt(mtdOut)}" onblur="handleInputBlur(this)"></td>
+                    <td class="border-r p-1 bg-orange-50/30 min-w-[78px]"><input type="text" name="outYtd" class="w-full min-w-[72px] bg-transparent text-center p-1 text-orange-700 outline-none" value="${fmt(ytdOut)}" onblur="handleInputBlur(this)"></td>
                     
-                    <td class="border-r p-1 bg-emerald-50"><input type="text" name="balance" class="w-full bg-transparent text-center p-1 font-bold text-emerald-800 text-xs outline-none" value="${fmt(currentBal)}" onblur="handleInputBlur(this)" oninput="recalcRow(this)"></td>
+                    <td class="border-r p-1 bg-emerald-50 min-w-[82px]"><input type="text" name="balance" class="w-full min-w-[74px] bg-transparent text-center p-1 font-bold text-emerald-800 text-xs outline-none" value="${fmt(currentBal)}" onblur="handleInputBlur(this)" oninput="recalcRow(this)"></td>
                     
-                    <td class="border-r p-1 bg-blue-50/30"><input type="text" name="cap" class="w-full bg-transparent text-center p-1 text-slate-500 outline-none" value="${fmt(prod.cap)}" onblur="handleInputBlur(this)" oninput="recalcRow(this)"></td>
-                    <td class="border-r p-1 bg-blue-50/30"><input type="text" name="pct" class="w-full bg-transparent text-center text-slate-400 font-bold" value="0.000" readonly tabindex="-1"></td>
-                    <td class="border-r p-1 bg-blue-50/30"><input type="text" name="free" class="w-full bg-transparent text-center text-emerald-600 font-bold" value="0" readonly tabindex="-1"></td>
+                    <td class="border-r p-1 bg-blue-50/30 min-w-[82px]"><input type="text" name="cap" class="w-full min-w-[74px] bg-transparent text-center p-1 text-slate-500 outline-none" value="${fmt(prod.cap)}" onblur="handleInputBlur(this)" oninput="recalcRow(this)"></td>
+                    <td class="border-r p-1 bg-blue-50/30 min-w-[54px]"><input type="text" name="pct" class="w-full min-w-[48px] bg-transparent text-center text-slate-400 font-bold" value="0.000" readonly tabindex="-1"></td>
+                    <td class="border-r p-1 bg-blue-50/30 min-w-[80px]"><input type="text" name="free" class="w-full min-w-[72px] bg-transparent text-center text-emerald-600 font-bold" value="0" readonly tabindex="-1"></td>
                     
-                    <td class="p-1 bg-indigo-50"><input type="text" name="days" class="w-full bg-transparent text-center text-indigo-700 font-bold" value="-" readonly tabindex="-1"></td>
+                    <td class="p-1 bg-indigo-50 min-w-[66px]"><input type="text" name="days" class="w-full min-w-[58px] bg-transparent text-center text-indigo-700 font-bold" value="-" readonly tabindex="-1"></td>
                 `;
                 tbody.appendChild(tr);
                 
@@ -5554,9 +5561,12 @@ function renderInfographicLayout(targetDate) {
         function renderZoneGrid(typeFilter, containerId, gaugeIdPrefix, targetDate) {
             const container = document.getElementById(containerId);
             if(!container) return;
+            const esc = typeof window.escapeHtml === 'function' ? window.escapeHtml : (s => String(s ?? ''));
             container.innerHTML = '';
-            container.style.display = 'grid';
-            container.className = `gap-x-1 gap-y-6 w-full`; 
+            container.className = 'stockms-zone-grid-scroll w-full';
+            const innerGrid = document.createElement('div');
+            innerGrid.style.display = 'grid';
+            innerGrid.className = 'gap-x-1.5 gap-y-4 w-full';
             
             // คัดกรองโดยเช็กประเภทเจาะจงของถังก่อน (t.type) หากไม่มีค่อยดึงจากประเภทอาคารหลัก (BUILDINGS[t.b].type)
             // สำหรับ 40Deg ให้รวมถังปรุงสุรา 1 และ ถังปรุงสุรา 2 แสดงในรายงานประจำวันด้วยเสมอ
@@ -5570,7 +5580,9 @@ function renderInfographicLayout(targetDate) {
                 }
             });
             tanks.sort((a,b) => a.id.localeCompare(b.id, undefined, {numeric: true}));
-            container.style.gridTemplateColumns = `repeat(${typeFilter === '70' ? 16 : 11}, minmax(0, 1fr))`;
+            const colsCount = typeFilter === '70' ? 16 : 11;
+            innerGrid.style.gridTemplateColumns = `repeat(${colsCount}, minmax(28px, 1fr))`;
+            innerGrid.style.minWidth = `${colsCount * 32}px`;
 
             let totalBal = 0, totalCap = 0;
             tanks.forEach(t => {
@@ -5582,9 +5594,9 @@ function renderInfographicLayout(targetDate) {
 
                 const is70 = typeFilter === '70';
                 const el = document.createElement('div');
-                el.className = `flex flex-col items-center group relative`; 
+                el.className = 'flex flex-col items-center group relative';
                 el.innerHTML = `
-                    <div class="w-full h-32 bg-slate-50 rounded shadow-sm relative border ${is70?'border-emerald-200':'border-amber-200'} flex flex-col justify-end overflow-hidden">
+                    <div class="w-full h-28 bg-slate-50 rounded shadow-sm relative border ${is70?'border-emerald-200':'border-amber-200'} flex flex-col justify-end overflow-hidden">
                         ${tankConfig[t.id]?.status==='repair'?'<div class="absolute inset-0 bg-red-100/50 flex items-center justify-center z-30"><i class="fas fa-wrench text-red-500 text-[10px]"></i></div>':''}
                         <div class="absolute top-0 w-full text-center text-[8px] font-bold text-slate-400 bg-white/80 py-0.5 z-20 border-b border-slate-100">${Math.round(pct)}%</div>
                         <div class="${is70?'bg-emerald-400':'bg-amber-400'} w-full transition-all duration-500 opacity-80 z-10" style="height: ${pct}%"></div>
@@ -5592,10 +5604,11 @@ function renderInfographicLayout(targetDate) {
                             <span class="text-[9px] font-bold ${is70?'text-emerald-900':'text-amber-900'} -rotate-90 px-1 rounded bg-white/40">${bal.toLocaleString(undefined,{maximumFractionDigits:0})}</span>
                         </div>
                     </div>
-                    <span class="text-[9px] text-slate-500 mt-1.5 font-bold truncate w-full text-center">${t.id}</span>
+                    <span class="stockms-zone-tank-id" title="ถัง ${esc(t.id)}">${esc(t.id)}</span>
                 `;
-                container.appendChild(el);
+                innerGrid.appendChild(el);
             });
+            container.appendChild(innerGrid);
 
             const gaugeFill = document.getElementById(`${gaugeIdPrefix}_fill`);
             if(gaugeFill) {
@@ -5640,9 +5653,9 @@ function getSimulatedState(targetDate) {
         const typeUpper = (tx.type || '').toUpperCase();
         if (typeUpper.includes('IN')) {
             if (tx.sourceLayers && tx.sourceLayers.length > 0 && tx.type !== 'BLEND_IN') {
-                tx.sourceLayers.forEach(l => tank.layers.push({volume: parseFloat(l.volume), targetDegree: tx.targetDegree || l.targetDegree}));
+                tx.sourceLayers.forEach(l => tank.layers.push({volume: parseFloat(l.volume), date: l.date || tx.date, batch: l.batch || tx.batch, targetDegree: tx.targetDegree || l.targetDegree}));
             } else {
-                tank.layers.push({volume: parseFloat(tx.volume), targetDegree: tx.targetDegree});
+                tank.layers.push({volume: parseFloat(tx.volume), date: tx.date, batch: tx.batch, targetDegree: tx.targetDegree});
             }
             tank.currentVolume += parseFloat(tx.volume);
         } else if (typeUpper.includes('OUT')) {
@@ -5706,6 +5719,9 @@ function getBalanceAtDate(prod, dateStr) {
 function renderStockLayout() {
             const container = document.getElementById('layoutContent');
             const targetDate = document.getElementById('layoutDateFilter').value;
+            const esc = typeof window.escapeHtml === 'function' ? window.escapeHtml : (s => String(s ?? ''));
+            const simMap = getSimulatedState(targetDate);
+            const refDateObj = targetDate ? new Date(targetDate) : new Date();
             container.innerHTML = '';
 
             // จัดกลุ่มตามอาคาร
@@ -5719,31 +5735,41 @@ function renderStockLayout() {
                 if(tanksInBldg.length === 0) return;
 
                 const section = document.createElement('div'); 
-                section.className = "mb-10 bg-white p-6 rounded-xl border border-slate-200 shadow-sm relative";
+                section.className = "mb-6 sm:mb-10 bg-white p-3.5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm relative";
                 const is40 = bName.includes("111");
                 const headerColor = is40 ? "text-amber-700 bg-amber-50 border-amber-200" : "text-emerald-700 bg-emerald-50 border-emerald-200";
                 
-                let netZoneCap = 0; tanksInBldg.forEach(t => { if(tankConfig[t.id]?.status !== 'bonded') netZoneCap += t.cap; });
+                let netZoneCap = 0, netZoneVol = 0;
+                tanksInBldg.forEach(t => {
+                    if (tankConfig[t.id]?.status !== 'bonded') {
+                        netZoneCap += t.cap;
+                        netZoneVol += getTankVolumeAtDate(t.id, targetDate);
+                    }
+                });
 
                 section.innerHTML = `
-                    <div class="flex items-center justify-between mb-10 p-3 rounded-lg border ${headerColor}">
-                        <h3 class="font-bold text-lg"><i class="fas fa-warehouse mr-2"></i>${bName}</h3>
-                        <span class="text-sm font-bold bg-white px-3 py-1 rounded shadow-sm text-slate-600 border border-slate-100">ความจุรวม: ${netZoneCap.toLocaleString()} L</span>
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-5 sm:mb-8 p-2.5 sm:p-3 rounded-xl border ${headerColor}">
+                        <h3 class="font-bold text-sm sm:text-lg"><i class="fas fa-warehouse mr-1.5"></i>${esc(bName)}</h3>
+                        <span class="text-[11px] sm:text-sm font-bold bg-white px-2.5 py-1 rounded-lg shadow-sm text-slate-600 border border-slate-100 tabular-nums">${netZoneVol.toLocaleString(undefined,{maximumFractionDigits:0})} / ${netZoneCap.toLocaleString()} L (${tanksInBldg.length} ถัง)</span>
                     </div>
-                    <div class="flex flex-wrap gap-x-8 gap-y-12 justify-center"></div>
+                    <div class="stockms-stock-layout-grid"></div>
                 `;
 
-                const grid = section.querySelector('.flex-wrap');
+                const grid = section.querySelector('.stockms-stock-layout-grid');
                 tanksInBldg.forEach(tank => {
                     const currentVol = getTankVolumeAtDate(tank.id, targetDate); 
                     const pct = Math.min(100, (currentVol / tank.cap) * 100);
                     const isRepair = tankConfig[tank.id]?.status === 'repair'; 
                     const isBonded = tankConfig[tank.id]?.status === 'bonded';
+                    const tState = simMap[tank.id];
+                    const layers = (tState && Array.isArray(tState.layers)) ? tState.layers.filter(l => (parseFloat(l.volume) || 0) > 0.01) : [];
+                    const oldestDate = layers.length && layers[0].date ? new Date(layers[0].date) : null;
+                    const ageDays = oldestDate && !isNaN(oldestDate.getTime()) ? Math.max(0, Math.floor((refDateObj - oldestDate) / 86400000)) : null;
                     
-		// --- ระบบวิเคราะห์ดีกรีเพื่อสาดสี (ปรับให้เป็น 2 สีตาม Daily Report) ---
-                    // --- ระบบวิเคราะห์ดีกรีเพื่อสาดสี (Dynamic Degree Coloring) ---
+		// --- ระบบวิเคราะห์ดีกรีเพื่อสาดสี (Dynamic Degree Coloring) ---
                     const isTank40 = (tank.type || BUILDINGS[tank.b].type) === '40Deg';
                     const defaultDeg = isTank40 ? 40 : 70;
+                    const matDaysThreshold = isTank40 ? 7 : 14;
                     
                     // ปัดเศษให้เป็นตัวเลขจำนวนเต็ม เพื่อป้องกันปัญหา "40.00" (ข้อความ) ไม่ตรงกับ 40
                     const currentDeg = Math.round(parseFloat(getTankDegreeAtDate(tank.id, targetDate, defaultDeg)));                    
@@ -5764,17 +5790,16 @@ function renderStockLayout() {
                     }
 
                     const tankEl = document.createElement('div');
-                    tankEl.className = `cursor-pointer hover:-translate-y-2 transition-transform group relative w-[80px]`;
+                    tankEl.className = `stockms-stock-tank-card cursor-pointer hover:-translate-y-1.5 transition-transform group relative w-[86px]`;
                     tankEl.onclick = () => filterHistoryByTank(tank.id);
 
                     let contentHtml = '';
                     if (isRepair) { 
-                        contentHtml = `<div class="tank-3d flex items-center justify-center bg-red-50 border border-red-200" style="height: 90px; border-radius: 4px;"><i class="fas fa-wrench text-red-500 text-xl"></i></div>`;
+                        contentHtml = `<div class="tank-3d flex items-center justify-center bg-red-50 border border-red-200" style="height: 82px; border-radius: 6px;"><i class="fas fa-wrench text-red-500 text-lg"></i></div>`;
                     } else if (isBonded) {
-                        contentHtml = `<div class="tank-3d flex items-center justify-center bg-purple-50 border border-purple-200" style="height: 90px; border-radius: 4px;"><i class="fas fa-lock text-purple-500 text-xl"></i></div>`;
+                        contentHtml = `<div class="tank-3d flex items-center justify-center bg-purple-50 border border-purple-200" style="height: 82px; border-radius: 6px;"><i class="fas fa-lock text-purple-500 text-lg"></i></div>`;
                     } else {
-                        // เพิ่ม Badge บอกดีกรีที่มุมขวาบนของถัง (แสดงผลตัวเลขที่ปัดเศษแล้วเพื่อให้ดูสะอาดตา)
-                        let degreeBadge = currentVol > 0 ? `<div class="absolute -top-3 -right-3 bg-slate-800 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full z-20 shadow-md border border-white">${currentDeg}°</div>` : '';
+                        let degreeBadge = currentVol > 0 ? `<div class="absolute -top-2.5 -right-2.5 bg-slate-800 text-white text-[8px] sm:text-[9px] font-bold px-1.5 py-0.5 rounded-full z-20 shadow border border-white">${currentDeg}°</div>` : '';
                         contentHtml = `
                             <div class="tank-3d-wrapper">
                                 ${activeTag}
@@ -5785,12 +5810,24 @@ function renderStockLayout() {
                             </div>
                         `;
                     }
+                    let statusBadge = `<span class="inline-block px-1 py-0.5 rounded bg-slate-100 text-slate-400 text-[8px] font-bold">ว่าง</span>`;
+                    if (isRepair) statusBadge = `<span class="inline-block px-1 py-0.5 rounded bg-rose-100 text-rose-700 text-[8px] font-bold">ซ่อมบำรุง</span>`;
+                    else if (isBonded) statusBadge = `<span class="inline-block px-1 py-0.5 rounded bg-purple-100 text-purple-700 text-[8px] font-bold">ทัณฑ์บน</span>`;
+                    else if (currentVol > 0 && ageDays !== null) {
+                        statusBadge = ageDays >= matDaysThreshold
+                            ? `<span class="inline-block px-1 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[8px] font-bold">พร้อม (${ageDays}d)</span>`
+                            : `<span class="inline-block px-1 py-0.5 rounded bg-amber-100 text-amber-700 text-[8px] font-bold">บ่ม ${ageDays}d</span>`;
+                    } else if (currentVol > 0) {
+                        statusBadge = `<span class="inline-block px-1 py-0.5 rounded bg-blue-100 text-blue-700 text-[8px] font-bold">${layers.length} ชั้น</span>`;
+                    }
+
                     tankEl.innerHTML = `
                         ${contentHtml}
-                        <div class="text-center mt-3 relative">
-                            <div class="text-xs font-bold text-slate-700 bg-slate-100 rounded px-1 py-0.5 mb-1 border border-slate-200">${tank.id}</div>
-                            <div class="text-[11px] font-sans tabular-nums font-bold ${currentVol>0 ? 'text-blue-700' : 'text-slate-400'}">${currentVol.toLocaleString(undefined, {maximumFractionDigits:0})}</div>
-                            <div class="text-[10px] text-slate-500 font-medium">${pct.toFixed(1)}%</div>
+                        <div class="text-center mt-2 relative leading-tight">
+                            <div class="text-[10px] sm:text-xs font-extrabold text-slate-800 bg-slate-100 rounded px-1 py-0.5 mb-0.5 border border-slate-200 truncate" title="${esc(tank.id)}">${esc(tank.id)}</div>
+                            <div class="text-[9px] sm:text-[10px] font-sans tabular-nums font-extrabold ${currentVol>0 ? 'text-blue-700' : 'text-slate-400'}">${currentVol.toLocaleString(undefined, {maximumFractionDigits:0})} <span class="text-[8px] font-normal text-slate-400">/${Math.round(tank.cap/1000)}k</span></div>
+                            <div class="text-[8px] sm:text-[9px] text-slate-500 font-bold mb-0.5">${pct.toFixed(0)}%</div>
+                            <div>${statusBadge}</div>
                         </div>
                     `;
                     grid.appendChild(tankEl);
@@ -5800,6 +5837,9 @@ function renderStockLayout() {
         }
         function filterHistoryByTank(tankId) {
             closeStockLayout();
+            if (document.body.classList.contains('kosmate-tab-active') && window.StockMSUI?.switchMobileTab) {
+                window.StockMSUI.switchMobileTab('reports');
+            }
             const historySection = document.getElementById('filterTank')?.closest('.glass-card') || document.getElementById('transactionTableBody');
             if (historySection) historySection.scrollIntoView({ behavior: 'smooth', block: 'start' });
             document.getElementById('filterTank').value = tankId;

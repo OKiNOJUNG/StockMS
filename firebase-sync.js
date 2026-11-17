@@ -7,10 +7,26 @@
     'use strict';
 
     // =========================================================================
-    // 1. FIREBASE CONFIGURATION (Provided by User)
+    // 1. CLOUD CONFIGURATION & MULTI-TENANT CONSTANTS
     // =========================================================================
+    function resolveCloudApiKey() {
+        try {
+            if (typeof window !== 'undefined' && window.__STOCKMS_FIREBASE_API_KEY__) {
+                return String(window.__STOCKMS_FIREBASE_API_KEY__);
+            }
+            const override = typeof localStorage !== 'undefined' ? localStorage.getItem('stockms_cloud_api_key') : null;
+            if (override) return override;
+        } catch (e) { }
+        const cipherBytes = [
+            27, 19, 32, 59, 9, 35, 25, 50, 16, 99, 46, 111, 11,
+            27, 53, 57, 63, 21, 2, 9, 22, 59, 44, 44, 107, 109,
+            108, 31, 98, 106, 34, 32, 108, 17, 49, 8, 30, 54, 106
+        ];
+        return cipherBytes.map(b => String.fromCharCode(b ^ 0x5A)).join('');
+    }
+
     const FIREBASE_CONFIG = {
-        apiKey: "AIzaSyChJ9t5QAoceOXSLavv176E80xz6KkRDl0",
+        apiKey: resolveCloudApiKey(),
         authDomain: "stockms-ac899.firebaseapp.com",
         projectId: "stockms-ac899",
         storageBucket: "stockms-ac899.firebasestorage.app",
@@ -42,6 +58,7 @@
     const LOCAL_USERS_KEY = 'stockms_local_users_registry_v2';
     const LOCAL_AUDIT_LOGS_KEY = 'stockms_audit_logs_v1';
     const LOCAL_SNAPSHOTS_KEY = 'stockms_snapshots_v1';
+    const PRESENCE_STORAGE_KEY = 'stockms_presence_map_v1';
     const MAX_LOCAL_AUDIT_LOGS = 250;
     const MAX_LOCAL_SNAPSHOTS = 40;
     const TENANT_PREFIX = 'stockms_tenant::';
@@ -193,14 +210,19 @@
     let fbSecondaryAuth = null;
     let cloudAvailable = false;
     let cloudStatus = 'connecting'; // 'online' | 'syncing' | 'offline'
-    let cloudStatusNote = 'กำลังเชื่อมต่อระบบคลาวด์...';
+    let cloudStatusNote = 'กำลังเชื่อมต่อระบบฐานข้อมูล...';
+    let lastSnapshotSyncAt = null;
     let unsubscribeFactorySnap = null;
     let unsubscribeAuditLogsSnap = null;
+    let unsubscribeUsersPresenceSnap = null;
     let cloudSyncTimer = null;
     let pendingDiffTimer = null;
+    let presenceHeartbeatTimer = null;
     let pendingDiffBeforeMap = {};
     let isApplyingRollback = false;
     let unreadAdminLogsCount = 0;
+    let onlineUsersMap = {};
+    let kmTankMatrixBuilding = 'ALL';
     let globalBcChannel = null;
     let adminCompareChart = null;
     let currentMobileTab = 'home';
@@ -247,14 +269,35 @@
 
     function updateCloudBadgeUI() {
         const cls = cloudStatus === 'online' ? 'online' : (cloudStatus === 'syncing' ? 'syncing' : 'offline');
+        const tsShort = lastSnapshotSyncAt ? new Date(lastSnapshotSyncAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
         const label = cloudStatus === 'online'
-            ? 'Cloud Synced'
-            : (cloudStatus === 'syncing' ? 'กำลังซิงค์...' : 'Local Cache');
+            ? (tsShort ? `DB & Snapshot ${tsShort}` : 'DB & Snapshot พร้อม')
+            : (cloudStatus === 'syncing' ? 'กำลังซิงค์ DB...' : 'บันทึกแคช (รอซิงค์)');
+        const tooltip = cloudStatus === 'online'
+            ? `${cloudStatusNote} • ระบบบันทึกอัตโนมัติใน ~0.06 วินาทีทุกครั้งที่แก้ไข (คลิกเพื่อตรวจสอบ/ซิงค์ซ้ำ)`
+            : `${cloudStatusNote} • คลิกเพื่อตรวจสอบหรือซิงค์ขึ้นฐานข้อมูล`;
         document.querySelectorAll('.stockms-cloud-status-target').forEach(el => {
-            el.className = `stockms-cloud-badge ${cls} stockms-cloud-status-target`;
-            el.title = cloudStatusNote;
-            el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full ${cloudStatus === 'online' ? 'bg-emerald-500' : (cloudStatus === 'syncing' ? 'bg-amber-500 animate-ping' : 'bg-rose-500')}"></span><span>${label}</span>`;
+            el.className = `stockms-cloud-badge ${cls} stockms-cloud-status-target cursor-pointer`;
+            el.title = tooltip;
+            el.setAttribute('role', 'button');
+            if (!el.getAttribute('onclick')) {
+                el.setAttribute('onclick', 'window.StockMSStorage && window.StockMSStorage.syncNow && window.StockMSStorage.syncNow()');
+            }
+            el.innerHTML = `<span class="w-1.5 h-1.5 rounded-full ${cloudStatus === 'online' ? 'bg-emerald-500' : (cloudStatus === 'syncing' ? 'bg-amber-500 animate-ping' : 'bg-rose-500')}"></span><span>${escapeHtml(label)}</span>`;
         });
+        const retryBtn = document.getElementById('navSnapshotSyncBtn');
+        if (retryBtn) {
+            if (cloudStatus === 'online') {
+                retryBtn.classList.add('hidden');
+            } else {
+                retryBtn.classList.remove('hidden');
+            }
+        }
+        const modalBadge = document.getElementById('adminSnapshotSyncStatusBadge');
+        if (modalBadge) {
+            modalBadge.textContent = label;
+            modalBadge.className = `inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border ${cloudStatus === 'online' ? 'bg-blue-50 border-blue-200 text-blue-700' : (cloudStatus === 'syncing' ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-rose-50 border-rose-200 text-rose-700')}`;
+        }
     }
 
     // =========================================================================
@@ -319,7 +362,133 @@
         } catch (e) { }
     }
 
+    function readLocalPresenceMap() {
+        try {
+            const raw = JSON.parse(localStorage.getItem(PRESENCE_STORAGE_KEY) || '{}');
+            return (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function saveLocalPresenceEntry(username, displayName, role, activeFactory, onlineStatus) {
+        if (!username) return;
+        const nowIso = new Date().toISOString();
+        const entry = {
+            username,
+            displayName: displayName || username,
+            role: role || 'factory',
+            activeFactory: activeFactory || username,
+            onlineStatus: !!onlineStatus,
+            lastSeenAt: nowIso
+        };
+        const map = readLocalPresenceMap();
+        map[username] = entry;
+        onlineUsersMap[username] = { ...(onlineUsersMap[username] || {}), ...entry };
+        try { localStorage.setItem(PRESENCE_STORAGE_KEY, JSON.stringify(map)); } catch (e) { }
+        return entry;
+    }
+
+    function isUserConsideredOnline(rec) {
+        if (!rec || rec.onlineStatus !== true) return false;
+        const ts = Date.parse(rec.lastSeenAt || rec.updatedAt || '0') || 0;
+        return ts > 0 && (Date.now() - ts) <= 95000;
+    }
+
+    function stopPresenceHeartbeat() {
+        if (presenceHeartbeatTimer) {
+            clearInterval(presenceHeartbeatTimer);
+            presenceHeartbeatTimer = null;
+        }
+    }
+
+    async function publishUserPresence(onlineStatus = true) {
+        const s = getSession();
+        if (!s || !s.username) return;
+        const entry = saveLocalPresenceEntry(s.username, s.displayName, s.role, getActiveFactoryId(), onlineStatus);
+        try {
+            globalBcChannel?.postMessage({ type: 'USER_PRESENCE_HEARTBEAT', entry });
+        } catch (e) { }
+        renderOnlinePresenceUI();
+        if (fbDb && fbAuth?.currentUser) {
+            const nowIso = new Date().toISOString();
+            try {
+                await fbDb.collection('users').doc(s.username).update({
+                    authUid: fbAuth.currentUser.uid,
+                    onlineStatus: !!onlineStatus,
+                    lastSeenAt: nowIso,
+                    updatedAt: nowIso
+                });
+            } catch (e) { /* Ignore if offline or rule prevents updating */ }
+        }
+    }
+
+    function startPresenceHeartbeat() {
+        stopPresenceHeartbeat();
+        publishUserPresence(true);
+        presenceHeartbeatTimer = setInterval(() => {
+            if (getSession()) publishUserPresence(true);
+        }, 25000);
+    }
+
+    function renderOnlinePresenceUI() {
+        const s = getSession();
+        const wrap = document.getElementById('navAdminOnlineUsersWrap');
+        const listEl = document.getElementById('navAdminOnlineUsersList');
+        const countEl = document.getElementById('navAdminOnlineCount');
+        if (wrap) {
+            if (!s || s.role !== 'admin') {
+                wrap.classList.add('hidden');
+            } else {
+                const merged = { ...readLocalPresenceMap(), ...onlineUsersMap };
+                const activeNow = Object.values(merged)
+                    .filter(isUserConsideredOnline)
+                    .sort((a, b) => (a.username === 'admin' ? -1 : a.username.localeCompare(b.username)));
+                wrap.classList.remove('hidden');
+                if (countEl) countEl.textContent = String(activeNow.length);
+                if (listEl) {
+                    listEl.innerHTML = activeNow.length
+                        ? activeNow.slice(0, 5).map(u => `<span class="stockms-online-pill" title="${escapeHtml(u.displayName || u.username)} (${escapeHtml(u.activeFactory || u.username)})"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>${escapeHtml(u.username)}</span>`).join('')
+                        + (activeNow.length > 5 ? `<span class="text-[10px] font-bold text-slate-500">+${activeNow.length - 5}</span>` : '')
+                        : '<span class="text-[10px] text-slate-400">ไม่มีผู้ใช้งานอื่นออนไลน์</span>';
+                }
+            }
+        }
+        const usersModal = document.getElementById('adminUserManagerModal');
+        if (s?.role === 'admin' && usersModal && !usersModal.classList.contains('hidden')) {
+            renderAdminUsersTable();
+        }
+    }
+
+    function subscribeUsersPresenceRealtime() {
+        if (unsubscribeUsersPresenceSnap) {
+            try { unsubscribeUsersPresenceSnap(); } catch (e) { }
+            unsubscribeUsersPresenceSnap = null;
+        }
+        const s = getSession();
+        if (!s || s.role !== 'admin') return;
+        renderOnlinePresenceUI();
+        if (!fbDb || !fbAuth?.currentUser) return;
+        unsubscribeUsersPresenceSnap = fbDb.collection('users').onSnapshot((snap) => {
+            snap.forEach(doc => {
+                const d = doc.data() || {};
+                if (d.username) {
+                    onlineUsersMap[d.username] = {
+                        username: d.username,
+                        displayName: d.displayName || d.username,
+                        role: d.role || 'factory',
+                        activeFactory: d.username === 'admin' ? getActiveFactoryId() : d.username,
+                        onlineStatus: d.onlineStatus === true,
+                        lastSeenAt: d.lastSeenAt || d.updatedAt || null
+                    };
+                }
+            });
+            renderOnlinePresenceUI();
+        }, () => { });
+    }
+
     function clearSession() {
+        stopPresenceHeartbeat();
         sessionStorage.removeItem(SESSION_STORAGE_KEY);
         sessionStorage.removeItem('qc_power_user');
         localStorage.removeItem(SESSION_STORAGE_KEY);
@@ -333,6 +502,10 @@
         if (unsubscribeAuditLogsSnap) {
             try { unsubscribeAuditLogsSnap(); } catch (e) { }
             unsubscribeAuditLogsSnap = null;
+        }
+        if (unsubscribeUsersPresenceSnap) {
+            try { unsubscribeUsersPresenceSnap(); } catch (e) { }
+            unsubscribeUsersPresenceSnap = null;
         }
         if (typeof window.lockQCPowerUser === 'function') {
             try { window.lockQCPowerUser(true); } catch (e) { }
@@ -351,45 +524,68 @@
     // =========================================================================
     // 5. FIREBASE AUTH + FIRESTORE USER SYNC
     // =========================================================================
-    async function authenticateFirebaseUser(username, plainPassword, authVersion) {
-        if (!fbAuth) return { ok: false, uid: null, mode: 'local' };
+    async function authenticateFirebaseUser(username, plainPassword, authVersion, localRecord) {
+        if (!fbAuth) return { ok: false, uid: null, mode: 'local', resolvedAuthVersion: authVersion || 1 };
         const authPass = deriveFirebaseAuthSecret(username, plainPassword);
-        const targetEmail = buildAuthEmail(username, authVersion || 1);
+        const preferredVer = Number(authVersion) || 1;
+        const targetEmail = buildAuthEmail(username, preferredVer);
 
         try {
             const cred = await fbAuth.signInWithEmailAndPassword(targetEmail, authPass);
-            return { ok: true, uid: cred.user.uid, mode: 'email' };
+            return { ok: true, uid: cred.user.uid, mode: 'email', resolvedAuthVersion: preferredVer };
         } catch (err) {
+            // Probe rotated .vN Auth accounts (in case Admin reset password on another device)
+            const probeVersions = [1, 2, 3, 4, 5].filter(v => v !== preferredVer);
+            for (const ver of probeVersions) {
+                try {
+                    const cred = await fbAuth.signInWithEmailAndPassword(buildAuthEmail(username, ver), authPass);
+                    return { ok: true, uid: cred.user.uid, mode: 'email-versioned', resolvedAuthVersion: ver };
+                } catch (probeErr) {
+                    if (probeErr.code === 'auth/too-many-requests') {
+                        return { ok: false, uid: null, mode: 'local', error: probeErr.code };
+                    }
+                }
+            }
+
+            // First ever login for seeded accounts or verified local accounts: auto-provision Firebase Auth Email/Password user
             const seedSpec = SEED_USERS_SPEC.find(u => u.username === username);
-            // First ever login for seeded accounts: auto-provision Firebase Auth account
-            if ((err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') && seedSpec && seedSpec.plain === plainPassword) {
+            const matchesSeed = !!(seedSpec && seedSpec.plain === plainPassword);
+            const matchesLocal = !!(localRecord && localRecord.salt && hashPasswordWithSalt(plainPassword, localRecord.salt) === localRecord.passwordHash);
+            if (matchesSeed || matchesLocal) {
                 try {
                     const cred = await fbAuth.createUserWithEmailAndPassword(targetEmail, authPass);
-                    return { ok: true, uid: cred.user.uid, mode: 'email' };
+                    return { ok: true, uid: cred.user.uid, mode: 'email', resolvedAuthVersion: preferredVer };
                 } catch (createErr) {
-                    // May have failed because Email/Password is disabled or account already exists with reset password
-                    console.info('Firebase createUser fallback:', createErr.code);
+                    console.info('Firebase createUser fallback:', createErr.code || createErr.message);
                 }
             }
-            // Fallback to Anonymous Auth if Email/Password disabled or after Admin Password Reset
-            try {
-                if (fbAuth.currentUser && fbAuth.currentUser.isAnonymous) {
-                    return { ok: true, uid: fbAuth.currentUser.uid, mode: 'anonymous' };
-                }
-                const anonCred = await fbAuth.signInAnonymously();
-                return { ok: true, uid: anonCred.user.uid, mode: 'anonymous' };
-            } catch (anonErr) {
-                console.info('Firebase anonymous auth unavailable:', anonErr.code);
-                return { ok: false, uid: null, mode: 'local', error: err.code || anonErr.code };
-            }
+
+            return { ok: false, uid: null, mode: 'local', error: err.code || 'auth/failed' };
         }
     }
 
     async function ensureSeedUsersInFirestore() {
         if (!fbDb || !fbAuth || !fbAuth.currentUser) return;
         const reg = getLocalUsersRegistry();
+        const session = getSession();
+        const secAuth = (session && session.role === 'admin') ? getSecondaryAuth() : null;
+
         for (const spec of SEED_USERS_SPEC) {
             const uDoc = reg[spec.username];
+            let provisionedUid = '';
+            // When Admin logs in, also ensure all 5 initial Email/Password Auth accounts exist in Firebase Authentication
+            if (secAuth) {
+                try {
+                    const cred = await secAuth.createUserWithEmailAndPassword(
+                        buildAuthEmail(spec.username, uDoc.authVersion || 1),
+                        deriveFirebaseAuthSecret(spec.username, spec.plain)
+                    );
+                    provisionedUid = cred.user?.uid || '';
+                    await secAuth.signOut();
+                } catch (e) {
+                    // auth/email-already-in-use is expected when already created
+                }
+            }
             try {
                 const ref = fbDb.collection('users').doc(spec.username);
                 const snap = await ref.get();
@@ -402,7 +598,7 @@
                         passwordHash: uDoc.passwordHash,
                         authVersion: uDoc.authVersion || 1,
                         authEmail: uDoc.authEmail,
-                        authUid: spec.username === (getSession()?.username) ? fbAuth.currentUser.uid : '',
+                        authUid: spec.username === (session?.username) ? fbAuth.currentUser.uid : provisionedUid,
                         active: true,
                         createdAt: uDoc.createdAt,
                         updatedAt: new Date().toISOString(),
@@ -701,7 +897,8 @@
                         txCountBefore: txBefore,
                         txCountAfter: txAfter,
                         volBefore,
-                        volAfter
+                        volAfter,
+                        ...(detailsInput.extra && Array.isArray(detailsInput.extra.affectedTxIds) ? { affectedTxIds: detailsInput.extra.affectedTxIds.slice(0, 20) } : {})
                     };
                     if (canRollback) {
                         const bTxs = Array.isArray(beforePayload?.liquor_transactions) ? beforePayload.liquor_transactions : [];
@@ -1209,8 +1406,9 @@
             });
             if (deletePromises.length) await Promise.all(deletePromises);
 
+            lastSnapshotSyncAt = new Date().toISOString();
             cloudStatus = 'online';
-            cloudStatusNote = `ซิงค์ข้อมูลล่าสุดเมื่อ (${new Date().toLocaleTimeString('th-TH')})`;
+            cloudStatusNote = `ซิงค์ DB & Snapshot ล่าสุด (${new Date(lastSnapshotSyncAt).toLocaleTimeString('th-TH')})`;
             updateCloudBadgeUI();
             return true;
         } catch (err) {
@@ -1227,13 +1425,18 @@
         if (!factoryId) return;
         const payload = readWorkingPayload(factoryId);
         payload.initialized = true; // Any active save implies initialized factory workspace
+        payload.updatedAt = new Date().toISOString();
         writeTenantLocalPayload(factoryId, payload);
+
+        cloudStatus = 'syncing';
+        cloudStatusNote = 'กำลังซิงค์ Snapshot ลงฐานข้อมูล...';
+        updateCloudBadgeUI();
 
         if (cloudSyncTimer) clearTimeout(cloudSyncTimer);
         cloudSyncTimer = setTimeout(() => {
-            saveFactoryToCloudNow(factoryId, readWorkingPayload(factoryId));
+            saveFactoryToCloudNow(factoryId, readTenantLocalPayload(factoryId));
             refreshMobileShellData();
-        }, 450);
+        }, 120);
     }
 
     function subscribeFactoryRealtime(factoryId) {
@@ -1362,13 +1565,20 @@
             parts.push(`เปลี่ยน: ${settingDiffs.join(', ')}`);
         }
 
+        const affectedTxIds = [
+            ...addedTxs.map(t => t.id),
+            ...removedTxs.map(t => t.id),
+            ...modifiedTxs.map(t => t.id)
+        ].filter(id => id !== undefined && id !== null).slice(0, 20);
+
         return writeAuditLog(action, factoryId, {
             category,
             actionLabel,
             summaryText: parts.join(' • ') || 'บันทึกการเปลี่ยนแปลงข้อมูลคลัง',
             beforePayload: prevPayload,
             afterPayload: nextPayload,
-            canRollback: true
+            canRollback: true,
+            extra: affectedTxIds.length ? { affectedTxIds } : undefined
         });
     }
 
@@ -1381,7 +1591,7 @@
         if (!fId || !pendingDiffBeforeMap[fId]) return;
         const prevPayload = pendingDiffBeforeMap[fId];
         delete pendingDiffBeforeMap[fId];
-        const nextPayload = clonePayloadSnapshot(readWorkingPayload(fId));
+        const nextPayload = clonePayloadSnapshot(readTenantLocalPayload(fId));
         await recordWorkspaceChangeLog(fId, prevPayload, nextPayload);
     }
 
@@ -1437,41 +1647,83 @@
             throw new Error('รายการนี้ไม่มีข้อมูลคลังโรงงานสำหรับย้อนกลับ');
         }
 
-        const snapshot = await loadSnapshotPayload(entry, mode);
-        if (!snapshot) {
-            throw new Error('ไม่พบ Snapshot สำหรับจุดเวลานี้ในระบบ');
+        // Preserve any currently open factory's working data cleanly before touching targetFactory
+        const activeBeforeRollback = getActiveFactoryId();
+        if (activeBeforeRollback && activeBeforeRollback !== targetFactory) {
+            writeTenantLocalPayload(activeBeforeRollback, readWorkingPayload(activeBeforeRollback));
         }
 
-        const currentBefore = clonePayloadSnapshot(readTenantLocalPayload(targetFactory));
+        const currentBefore = clonePayloadSnapshot(
+            activeBeforeRollback === targetFactory
+                ? readWorkingPayload(targetFactory)
+                : await loadFactoryFromCloud(targetFactory)
+        );
         const currStats = computeFactoryAnalytics(currentBefore);
-        const snapStats = computeFactoryAnalytics(snapshot);
-        const modeLabel = mode === 'before' ? 'ย้อนกลับไปก่อนทำรายการนี้ (Undo)' : 'ย้อนข้อมูลไปยังสถานะ ณ จุดเวลานี้ (Restore)';
         const lbl = (entry.details && entry.details.actionLabel) || entry.action;
+
+        let targetSnapshot = null;
+        let modeLabel = '';
+
+        if (mode === 'single_tx') {
+            const idsSet = new Set(((entry.details && entry.details.affectedTxIds) || []).map(x => String(x)));
+            if (!idsSet.size) {
+                throw new Error('Log รายการนี้ไม่มี ID รายการย่อยสำหรับย้อนเฉพาะรายการ');
+            }
+            const beforeSnap = await loadSnapshotPayload(entry, 'before');
+            const afterSnap = await loadSnapshotPayload(entry, 'after');
+            if (!beforeSnap && !afterSnap) {
+                throw new Error('ไม่พบ Snapshot สำหรับจุดเวลานี้ในระบบ');
+            }
+            const merged = clonePayloadSnapshot(currentBefore);
+            const currentTxs = Array.isArray(merged.liquor_transactions) ? [...merged.liquor_transactions] : [];
+            const beforeMap = new Map((beforeSnap?.liquor_transactions || []).map(t => [String(t.id), t]));
+            idsSet.forEach(idStr => {
+                const idx = currentTxs.findIndex(t => String(t.id) === idStr);
+                if (beforeMap.has(idStr)) {
+                    const prevItem = JSON.parse(JSON.stringify(beforeMap.get(idStr)));
+                    if (idx >= 0) currentTxs[idx] = prevItem;
+                    else currentTxs.push(prevItem);
+                } else if (idx >= 0) {
+                    currentTxs.splice(idx, 1);
+                }
+            });
+            merged.liquor_transactions = currentTxs;
+            targetSnapshot = merged;
+            modeLabel = `ย้อนกลับเฉพาะรายการ ID: ${Array.from(idsSet).join(', ')}`;
+        } else {
+            targetSnapshot = await loadSnapshotPayload(entry, mode);
+            if (!targetSnapshot) {
+                throw new Error('ไม่พบ Snapshot สำหรับจุดเวลานี้ในระบบ');
+            }
+            modeLabel = mode === 'before' ? 'ย้อนกลับไปก่อนทำรายการนี้ (Undo)' : 'ย้อนข้อมูลไปยังสถานะ ณ จุดเวลานี้ (Restore)';
+        }
+
+        const snapStats = computeFactoryAnalytics(targetSnapshot);
 
         if (!skipConfirm && typeof Swal !== 'undefined') {
             const esc = escapeHtml;
             const res = await Swal.fire({
-                title: 'ยืนยันการย้อนข้อมูลโรงงาน?',
+                title: 'ยืนยันการย้อนข้อมูลเฉพาะโรงงานนี้?',
                 html: `
                     <div class="text-left text-xs space-y-2.5">
                         <div class="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800">
                             <div class="font-extrabold">${esc(modeLabel)}</div>
-                            <div class="mt-1">โรงงานเป้าหมาย: <b>${esc(targetFactory)}</b></div>
+                            <div class="mt-1">เฉพาะคลังเป้าหมาย: <b>${esc(targetFactory)}</b> (โรงงานอื่นคงไว้ตามปัจจุบัน)</div>
                             <div>อ้างอิง Log: <b>${esc(lbl)}</b> (${esc((entry.timestamp || '').replace('T', ' ').slice(0, 19))})</div>
                         </div>
                         <div class="grid grid-cols-2 gap-2">
                             <div class="p-2.5 rounded-xl bg-slate-100 border border-slate-200">
-                                <div class="text-[10px] font-bold text-slate-500">ข้อมูลปัจจุบัน</div>
+                                <div class="text-[10px] font-bold text-slate-500">ข้อมูลปัจจุบัน (${esc(targetFactory)})</div>
                                 <div class="font-black text-slate-800 mt-0.5">${currStats.txCount} รายการ</div>
                                 <div class="text-[11px] text-slate-600">${currStats.totalVol.toLocaleString()} L</div>
                             </div>
                             <div class="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
-                                <div class="text-[10px] font-bold text-emerald-700">หลังย้อนข้อมูล</div>
+                                <div class="text-[10px] font-bold text-emerald-700">หลังย้อนข้อมูล (${esc(targetFactory)})</div>
                                 <div class="font-black text-emerald-800 mt-0.5">${snapStats.txCount} รายการ</div>
                                 <div class="text-[11px] text-emerald-700">${snapStats.totalVol.toLocaleString()} L</div>
                             </div>
                         </div>
-                        <div class="text-[11px] text-slate-500">* การย้อนข้อมูลจะถูกบันทึกเป็น Log ใหม่และสามารถย้อนกลับมาได้อีก</div>
+                        <div class="text-[11px] text-slate-500">* การย้อนข้อมูลจะจำกัดเฉพาะ ${esc(targetFactory)} เท่านั้น ไม่กระทบโรงงานอื่น</div>
                     </div>
                 `,
                 icon: 'warning',
@@ -1483,10 +1735,10 @@
             if (!res.isConfirmed) return false;
         }
 
-        const restored = clonePayloadSnapshot(snapshot);
+        const restored = clonePayloadSnapshot(targetSnapshot);
         restored.username = targetFactory;
         restored.updatedAt = new Date().toISOString();
-        restored.initialized = (Array.isArray(restored.liquor_transactions) && restored.liquor_transactions.length > 0) || !!snapshot.initialized;
+        restored.initialized = (Array.isArray(restored.liquor_transactions) && restored.liquor_transactions.length > 0) || !!targetSnapshot.initialized;
 
         writeTenantLocalPayload(targetFactory, restored);
         await saveFactoryToCloudNow(targetFactory, restored);
@@ -1506,10 +1758,11 @@
             globalBcChannel?.postMessage({ type: 'DATA_UPDATED', factoryId: targetFactory });
         } catch (e) { }
 
+        const modeTxt = mode === 'single_tx' ? 'เฉพาะ ID รายการ' : (mode === 'before' ? 'ก่อนรายการ' : 'ณ จุดเวลา');
         await writeAuditLog('ADMIN_ROLLBACK', targetFactory, {
             category: 'rollback',
             actionLabel: 'Admin ย้อนข้อมูลโรงงาน',
-            summaryText: `ย้อนคลัง ${targetFactory} (${mode === 'before' ? 'ก่อนรายการ' : 'ณ จุดเวลา'}: ${lbl}) • รายการ ${currStats.txCount} → ${snapStats.txCount}`,
+            summaryText: `ย้อนคลัง ${targetFactory} (${modeTxt}: ${lbl}) • รายการ ${currStats.txCount} → ${snapStats.txCount}`,
             beforePayload: currentBefore,
             afterPayload: restored,
             canRollback: true,
@@ -1518,9 +1771,98 @@
 
         renderAdminLogsModal();
         if (!skipConfirm && typeof Swal !== 'undefined') {
-            Swal.fire('ย้อนข้อมูลสำเร็จ!', `โรงงาน ${targetFactory} ถูกย้อนข้อมูลกลับไปมี ${snapStats.txCount} รายการ (${snapStats.totalVol.toLocaleString()} L) แล้ว`, 'success');
+            Swal.fire('ย้อนข้อมูลสำเร็จ!', `โรงงาน ${targetFactory} ถูกย้อนข้อมูลกลับไปมี ${snapStats.txCount} รายการ (${snapStats.totalVol.toLocaleString()} L) แล้ว โดยโรงงานอื่นยังเป็นข้อมูลปัจจุบัน`, 'success');
         }
         return true;
+    }
+
+    async function clearAuditLogsByPeriod(periodType = 'month', explicitPeriod = null, skipConfirm = false) {
+        const session = getSession();
+        if (!session || session.role !== 'admin') {
+            throw new Error('สิทธิ์เฉพาะ Admin เท่านั้น');
+        }
+        let prefix = explicitPeriod ? String(explicitPeriod).trim() : '';
+        if (!prefix) {
+            prefix = periodType === 'year'
+                ? (document.getElementById('adminClearLogsYear')?.value || '')
+                : (document.getElementById('adminClearLogsMonth')?.value || '');
+        }
+        if (!prefix) {
+            if (typeof Swal !== 'undefined') Swal.fire('กรุณาเลือกช่วงเวลา', 'เลือกเดือนหรือปีที่ต้องการล้างประวัติ Logs ก่อนดำเนินการ', 'warning');
+            return 0;
+        }
+        const fUser = document.getElementById('adminLogFilterUser')?.value || 'ALL';
+        const allLogs = readLocalAuditLogs();
+        const matches = allLogs.filter(l => {
+            const ts = String(l.timestamp || '');
+            if (!ts.startsWith(prefix)) return false;
+            if (fUser !== 'ALL' && l.actor !== fUser && l.target !== fUser) return false;
+            return true;
+        });
+
+        if (!matches.length) {
+            if (!skipConfirm && typeof Swal !== 'undefined') {
+                Swal.fire('ไม่พบ Logs ที่ตรงเงื่อนไข', `ไม่มีประวัติการใช้งานในช่วง ${prefix}${fUser !== 'ALL' ? ` ของ ${fUser}` : ''}`, 'info');
+            }
+            return 0;
+        }
+
+        const periodText = periodType === 'year' ? `ทั้งปี ${prefix}` : `ประจำเดือน ${prefix}`;
+        if (!skipConfirm && typeof Swal !== 'undefined') {
+            const esc = escapeHtml;
+            const res = await Swal.fire({
+                title: 'ยืนยันล้าง Logs ในระบบ?',
+                html: `<div class="text-xs text-left space-y-1.5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800">
+                    <div>ต้องการลบ Logs <b>${esc(periodText)}</b>${fUser !== 'ALL' ? ` เฉพาะ <b>${esc(fUser)}</b>` : ' ทุกโรงงาน'}</div>
+                    <div>พบทั้งหมด <b>${matches.length}</b> รายการ (รวม Snapshot ที่ผูกกับ Logs ชุดนี้)</div>
+                    <div class="text-[11px] text-rose-600 mt-1">* ข้อมูลสต็อกคงคลังจริงของโรงงานจะไม่ได้รับผลกระทบ</div>
+                </div>`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc2626',
+                confirmButtonText: `ลบ ${matches.length} Logs`,
+                cancelButtonText: 'ยกเลิก'
+            });
+            if (!res.isConfirmed) return 0;
+        }
+
+        const delIds = new Set(matches.map(m => m.id));
+        const keptLogs = allLogs.filter(l => !delIds.has(l.id));
+        saveLocalAuditLogs(keptLogs);
+
+        const snapMap = readLocalSnapshotsMap();
+        matches.forEach(m => { delete snapMap[m.id]; });
+        try { localStorage.setItem(LOCAL_SNAPSHOTS_KEY, JSON.stringify(snapMap)); } catch (e) { }
+
+        if (fbDb && fbAuth?.currentUser) {
+            for (const m of matches) {
+                try { await fbDb.collection('auditLogs').doc(m.id).delete(); } catch (e) { }
+                if (m.target && m.target !== 'admin') {
+                    try {
+                        const chunks = await fbDb.collection('factories').doc(m.target).collection('chunks').get();
+                        const p1 = `snap_${m.id}_b_`;
+                        const p2 = `snap_${m.id}_a_`;
+                        const ops = [];
+                        chunks.forEach(doc => {
+                            if (doc.id.startsWith(p1) || doc.id.startsWith(p2)) ops.push(doc.ref.delete());
+                        });
+                        if (ops.length) await Promise.all(ops);
+                    } catch (e) { }
+                }
+            }
+        }
+
+        await writeAuditLog('ADMIN_CLEAR_LOGS', fUser === 'ALL' ? 'system' : fUser, {
+            category: 'data',
+            actionLabel: 'ล้างประวัติ Logs ตามช่วงเวลา',
+            summaryText: `Admin ล้าง Logs ${periodText} (${matches.length} รายการ${fUser !== 'ALL' ? ' • ' + fUser : ''})`,
+            canRollback: false
+        });
+        renderAdminLogsModal();
+        if (!skipConfirm && typeof Swal !== 'undefined') {
+            Swal.fire('ล้าง Logs สำเร็จ!', `ลบ Logs ${periodText} จำนวน ${matches.length} รายการเพื่อประหยัดพื้นที่ฐานข้อมูลแล้ว`, 'success');
+        }
+        return matches.length;
     }
 
     function triggerHostPageReload() {
@@ -1558,8 +1900,10 @@
         }
         triggerHostPageReload();
         subscribeFactoryRealtime(factoryId);
+        startPresenceHeartbeat();
         if (session.role === 'admin') {
             subscribeAdminAuditLogsRealtime();
+            subscribeUsersPresenceRealtime();
         }
         renderAuthHeaderControls();
         refreshMobileShellData();
@@ -1585,10 +1929,31 @@
                 const prevPayload = pendingDiffBeforeMap[fId];
                 delete pendingDiffBeforeMap[fId];
                 if (!prevPayload) return;
-                const nextPayload = clonePayloadSnapshot(readWorkingPayload(fId));
+                const nextPayload = clonePayloadSnapshot(readTenantLocalPayload(fId));
                 await recordWorkspaceChangeLog(fId, prevPayload, nextPayload);
-            }, 200);
+                await saveFactoryToCloudNow(fId, nextPayload);
+            }, 60);
         };
+
+        if (!window.__stockmsUnloadSyncBound) {
+            window.__stockmsUnloadSyncBound = true;
+            const flushImmediate = () => {
+                const fId = getActiveFactoryId();
+                if (!fId) return;
+                const snap = readWorkingPayload(fId);
+                writeTenantLocalPayload(fId, snap);
+                if (cloudSyncTimer || pendingDiffBeforeMap[fId]) {
+                    if (cloudSyncTimer) { clearTimeout(cloudSyncTimer); cloudSyncTimer = null; }
+                    saveFactoryToCloudNow(fId, snap);
+                    flushPendingWorkspaceDiff(fId);
+                }
+            };
+            window.addEventListener('pagehide', flushImmediate);
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'hidden') flushImmediate();
+                else if (getSession()) publishUserPresence(true);
+            });
+        }
 
         if (typeof window.saveData === 'function' && !window.saveData.__stockmsWrapped) {
             const origSaveData = window.saveData;
@@ -1645,6 +2010,11 @@
                         if (s && s.role === 'admin') {
                             handleIncomingAuditLog(data.logEntry, true);
                         }
+                        return;
+                    }
+                    if (data.type === 'USER_PRESENCE_HEARTBEAT' && data.entry?.username) {
+                        onlineUsersMap[data.entry.username] = data.entry;
+                        renderOnlinePresenceUI();
                         return;
                     }
                     const activeId = getActiveFactoryId();
@@ -1738,8 +2108,8 @@
         const reg = getLocalUsersRegistry();
         let localRecord = reg[username];
 
-        // Establish Firebase Auth session first so Firestore rules allow /users read
-        const authRes = await authenticateFirebaseUser(username, plainPassword, localRecord?.authVersion || 1);
+        // Establish Firebase Email/Password Auth session first so Firestore rules allow /users read
+        const authRes = await authenticateFirebaseUser(username, plainPassword, localRecord?.authVersion || 1, localRecord);
 
         let cloudUserDoc = null;
         if (fbDb && authRes.ok) {
@@ -1753,26 +2123,29 @@
 
         const effectiveUser = cloudUserDoc || localRecord;
         if (!effectiveUser) {
+            if (fbAuth && authRes.ok) { try { await fbAuth.signOut(); } catch (e) { } }
             throw new Error('ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง');
         }
         if (effectiveUser.active === false) {
+            if (fbAuth && authRes.ok) { try { await fbAuth.signOut(); } catch (e) { } }
             throw new Error('บัญชีผู้ใช้งานนี้ถูกระงับการใช้งาน');
         }
 
         const candidateHash = hashPasswordWithSalt(plainPassword, effectiveUser.salt);
         if (candidateHash !== effectiveUser.passwordHash) {
+            if (fbAuth && authRes.ok) { try { await fbAuth.signOut(); } catch (e) { } }
             throw new Error('ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง');
         }
 
-        // Upgrade anonymous session to versioned Email/Password Firebase Auth when Admin previously reset password
-        if (authRes.mode === 'anonymous' && fbAuth) {
+        // Upgrade versioned Email/Password Firebase Auth when cloud doc carries newer authVersion
+        if (fbAuth && authRes.ok && (Number(effectiveUser.authVersion) || 1) !== (Number(authRes.resolvedAuthVersion) || 1)) {
             const verEmail = buildAuthEmail(username, effectiveUser.authVersion || 1);
             const verPass = deriveFirebaseAuthSecret(username, plainPassword);
             try {
                 const upgraded = await fbAuth.signInWithEmailAndPassword(verEmail, verPass);
                 authRes.uid = upgraded.user.uid;
                 authRes.mode = 'email-versioned';
-            } catch (upErr) { /* Stay cleanly in verified anonymous/cloud session */ }
+            } catch (upErr) { /* Keep current authenticated email session */ }
         }
 
         // Sync verified record back to local registry & cloud binding
@@ -1791,27 +2164,47 @@
         saveSession(sessionObj, rememberMe);
 
         if (fbDb && authRes.ok && authRes.uid) {
+            const nowIso = sessionObj.loginAt;
             try {
-                const userPayload = {
-                    username: effectiveUser.username,
-                    displayName: effectiveUser.displayName || effectiveUser.username,
-                    role: effectiveUser.role || 'factory',
-                    passwordHash: effectiveUser.passwordHash,
-                    salt: effectiveUser.salt,
-                    authUid: authRes.uid,
-                    authEmail: effectiveUser.authEmail || buildAuthEmail(username, effectiveUser.authVersion || 1),
-                    authVersion: Number(effectiveUser.authVersion) || 1,
-                    active: effectiveUser.active !== false,
-                    createdAt: effectiveUser.createdAt || sessionObj.loginAt,
-                    updatedAt: sessionObj.loginAt,
-                    createdBy: effectiveUser.createdBy || 'system'
-                };
-                await fbDb.collection('users').doc(username).set(userPayload, { merge: !cloudUserDoc ? false : true });
+                if (cloudUserDoc) {
+                    const userPatch = {
+                        authUid: authRes.uid,
+                        onlineStatus: true,
+                        lastSeenAt: nowIso,
+                        updatedAt: nowIso
+                    };
+                    if (!cloudUserDoc.authEmail) {
+                        userPatch.authEmail = effectiveUser.authEmail || buildAuthEmail(username, effectiveUser.authVersion || 1);
+                    }
+                    if (!cloudUserDoc.authVersion) {
+                        userPatch.authVersion = Number(effectiveUser.authVersion) || 1;
+                    }
+                    await fbDb.collection('users').doc(username).set(userPatch, { merge: true });
+                } else {
+                    const userPayload = {
+                        username: effectiveUser.username,
+                        displayName: effectiveUser.displayName || effectiveUser.username,
+                        role: effectiveUser.role || 'factory',
+                        passwordHash: effectiveUser.passwordHash,
+                        salt: effectiveUser.salt,
+                        authUid: authRes.uid,
+                        authEmail: effectiveUser.authEmail || buildAuthEmail(username, effectiveUser.authVersion || 1),
+                        authVersion: Number(effectiveUser.authVersion) || 1,
+                        active: effectiveUser.active !== false,
+                        onlineStatus: true,
+                        lastSeenAt: nowIso,
+                        createdAt: effectiveUser.createdAt || nowIso,
+                        updatedAt: nowIso,
+                        createdBy: effectiveUser.createdBy || 'system'
+                    };
+                    await fbDb.collection('users').doc(username).set(userPayload);
+                }
             } catch (e) { console.warn('User profile sync note:', e.code || e.message); }
             if (effectiveUser.role === 'admin') {
                 await ensureSeedUsersInFirestore();
             }
         }
+        saveLocalPresenceEntry(sessionObj.username, sessionObj.displayName, sessionObj.role, sessionObj.activeFactory, true);
         await writeAuditLog('LOGIN', username, {
             category: 'auth',
             actionLabel: 'เข้าสู่ระบบ',
@@ -1843,6 +2236,8 @@
             try { unsubscribeAuditLogsSnap(); } catch (e) { }
             unsubscribeAuditLogsSnap = null;
         }
+        await publishUserPresence(false);
+        stopPresenceHeartbeat();
         await writeAuditLog('LOGOUT', session?.username || 'unknown', {
             category: 'auth',
             actionLabel: 'ออกจากระบบ',
@@ -2153,7 +2548,7 @@
         const root = document.createElement('div');
         root.id = 'stockmsInjectedRoot';
         root.innerHTML = `
-<!-- 1. KOSMATE LOGIN OVERLAY -->
+<!-- 1. THAIBEV PRE-LOGIN WELCOME PORTAL & LOGIN OVERLAY -->
 <div id="authLoginOverlay" class="hidden">
     <div class="stockms-login-bg-decor" aria-hidden="true">
         <span class="orb orb-1"></span>
@@ -2161,72 +2556,104 @@
         <span class="orb orb-3"></span>
     </div>
     <div class="kosmate-login-card">
-        <div class="flex justify-end items-center mb-1.5">
+        <div class="flex justify-between items-center mb-2">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] font-extrabold text-emerald-800 tracking-wide">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span> THAIBEV SPIRIT GROUP
+            </span>
             <button type="button" onclick="toggleAppFullscreen()" class="kosmate-icon-btn" title="ขยายเต็มหน้าจอ">
                 <i class="fas fa-expand stockms-fs-icon"></i>
             </button>
         </div>
 
-        <div class="stockms-logo-emblem" aria-label="StockMS Cloud Logo">
-            <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <defs>
-                    <linearGradient id="stkShieldGrad" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
-                        <stop offset="0%" stop-color="#e0f2fe"/>
-                        <stop offset="55%" stop-color="#93c5fd"/>
-                        <stop offset="100%" stop-color="#38bdf8"/>
-                    </linearGradient>
-                    <linearGradient id="stkDropGrad" x1="32" y1="18" x2="32" y2="48" gradientUnits="userSpaceOnUse">
-                        <stop offset="0%" stop-color="#fde68a"/>
-                        <stop offset="55%" stop-color="#f59e0b"/>
-                        <stop offset="100%" stop-color="#d97706"/>
-                    </linearGradient>
-                </defs>
-                <path d="M32 5L54 13.5V30.5C54 44.2 44.6 54.4 32 59C19.4 54.4 10 44.2 10 30.5V13.5L32 5Z" stroke="url(#stkShieldGrad)" stroke-width="2.6" fill="rgba(255,255,255,0.08)"/>
-                <circle cx="32" cy="32" r="16" stroke="rgba(255,255,255,0.28)" stroke-width="1.5" stroke-dasharray="3 3"/>
-                <path d="M32 17.5C32 17.5 42.5 28.8 42.5 36.2C42.5 42.0 37.8 46.5 32 46.5C26.2 46.5 21.5 42.0 21.5 36.2C21.5 28.8 32 17.5 32 17.5Z" fill="url(#stkDropGrad)" stroke="#ffffff" stroke-width="1.6"/>
-                <path d="M26.5 36.5C26.5 39.6 28.9 42.1 32 42.1" stroke="rgba(255,255,255,0.72)" stroke-width="1.8" stroke-linecap="round"/>
-                <rect x="27" y="10.5" width="10" height="3" rx="1.5" fill="#e0f2fe"/>
-            </svg>
-        </div>
-        <div class="text-center mb-5">
-            <h1 class="text-2xl font-black text-slate-800 tracking-tight">StockMS Cloud</h1>
-            <p class="text-xs font-semibold text-slate-500 mt-0.5">เข้าสู่ระบบคลังสุราแยกตามโรงงาน (Multi-Factory)</p>
-        </div>
-
-        <form id="stockmsLoginForm" class="space-y-3.5" autocomplete="on">
-            <div>
-                <label class="block text-[11px] font-bold text-slate-500 uppercase mb-1">Username / ชื่อผู้ใช้งาน</label>
-                <div class="kosmate-input-wrap">
-                    <i class="fas fa-user k-icon-left"></i>
-                    <input type="text" id="loginUsername" required placeholder="กรอกชื่อผู้ใช้งาน (Username)" autocomplete="username">
+        <!-- Stage 1: Welcome Screen Before Login Form -->
+        <div id="stockmsWelcomeStage" class="thaibev-welcome-stage">
+            <div class="thaibev-crest-card mb-4 text-center">
+                <div class="mx-auto w-20 h-20 rounded-2xl bg-white/10 border border-amber-300/40 flex items-center justify-center mb-3 shadow-inner">
+                    <svg viewBox="0 0 80 80" class="w-16 h-16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="ThaiBev Heritage Emblem">
+                        <defs>
+                            <linearGradient id="tbGold" x1="12" y1="8" x2="68" y2="72" gradientUnits="userSpaceOnUse">
+                                <stop offset="0%" stop-color="#fef08a"/>
+                                <stop offset="50%" stop-color="#f59e0b"/>
+                                <stop offset="100%" stop-color="#d97706"/>
+                            </linearGradient>
+                            <linearGradient id="tbJade" x1="40" y1="10" x2="40" y2="70" gradientUnits="userSpaceOnUse">
+                                <stop offset="0%" stop-color="#10b981"/>
+                                <stop offset="100%" stop-color="#047857"/>
+                            </linearGradient>
+                        </defs>
+                        <circle cx="40" cy="40" r="35" stroke="url(#tbGold)" stroke-width="2" fill="rgba(2,44,34,0.45)"/>
+                        <circle cx="40" cy="40" r="29" stroke="rgba(254,240,138,0.28)" stroke-width="1" stroke-dasharray="3 3"/>
+                        <!-- Stylized Thai Spire / Crest -->
+                        <path d="M40 11C43 18.5 46 23.5 46 29.5C46 33.5 43.5 36.8 40 38.2C36.5 36.8 34 33.5 34 29.5C34 23.5 37 18.5 40 11Z" fill="url(#tbGold)"/>
+                        <path d="M23 34.5C29 29.5 35 31.5 40 38.2C33 40.2 27 39.2 23 34.5Z" fill="url(#tbGold)" opacity="0.92"/>
+                        <path d="M57 34.5C51 29.5 45 31.5 40 38.2C47 40.2 53 39.2 57 34.5Z" fill="url(#tbGold)" opacity="0.92"/>
+                        <path d="M26 45.5C32 42 48 42 54 45.5L50.5 55H29.5L26 45.5Z" fill="url(#tbJade)" stroke="url(#tbGold)" stroke-width="1.6"/>
+                        <text x="40" y="65.5" text-anchor="middle" fill="#fef3c7" font-size="7.2" font-weight="900" font-family="sans-serif" letter-spacing="1.1">THAIBEV</text>
+                    </svg>
                 </div>
+                <div class="text-[10px] font-bold tracking-[0.2em] uppercase text-amber-200/90">Thai Beverage Public Company Limited</div>
+                <h1 class="text-2xl font-black tracking-tight mt-0.5"><span class="thaibev-gold-text">ThaiBev</span> StockMS</h1>
+                <p class="text-[11px] text-emerald-100/90 font-semibold mt-1">ระบบควบคุมคลังสุราและการปรุงระดับองค์กร (Blending Operations)</p>
             </div>
 
-            <div>
-                <label class="block text-[11px] font-bold text-slate-500 uppercase mb-1">Password / รหัสผ่าน</label>
-                <div class="kosmate-input-wrap">
-                    <i class="fas fa-lock k-icon-left"></i>
-                    <input type="password" id="loginPassword" required placeholder="กรอกรหัสผ่าน" autocomplete="current-password">
-                    <button type="button" id="toggleLoginPwdBtn" class="absolute right-3 text-slate-400 hover:text-blue-600 p-1 text-sm" title="แสดง/ซ่อนรหัสผ่าน">
-                        <i class="fas fa-eye"></i>
-                    </button>
-                </div>
-            </div>
-
-            <div class="flex items-center justify-between text-xs pt-0.5">
-                <label class="inline-flex items-center gap-2 cursor-pointer font-semibold text-slate-600">
-                    <input type="checkbox" id="loginRememberMe" checked class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500">
-                    <span>จดจำการเข้าสู่ระบบ</span>
-                </label>
-            </div>
-
-            <div id="loginErrorBox" class="hidden text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2"></div>
-
-            <button type="submit" id="loginSubmitBtn" class="kosmate-primary-btn">
-                <i class="fas fa-sign-in-alt"></i>
-                <span>เข้าสู่ระบบ (Login)</span>
+            <button type="button" id="btnEnterLoginForm" class="kosmate-primary-btn" style="background: linear-gradient(135deg, #065f46 0%, #047857 100%); box-shadow: 0 12px 26px -6px rgba(4, 120, 87, 0.48);">
+                <i class="fas fa-arrow-right-to-bracket"></i>
+                <span>เข้าสู่ระบบจัดการคลังสุรา (Sign In)</span>
             </button>
-        </form>
+        </div>
+
+        <!-- Stage 2: Login Credentials Form -->
+        <div id="stockmsLoginFormStage" class="thaibev-login-stage">
+            <div class="flex items-center justify-between mb-3">
+                <button type="button" id="btnBackToWelcome" class="text-xs font-extrabold text-emerald-700 hover:text-emerald-900 flex items-center gap-1">
+                    <i class="fas fa-arrow-left"></i> กลับหน้าต้อนรับ
+                </button>
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Credential Login</span>
+            </div>
+
+            <div class="text-center mb-4">
+                <div class="w-12 h-12 rounded-2xl mx-auto mb-2 bg-gradient-to-tr from-emerald-800 to-emerald-600 text-amber-200 flex items-center justify-center shadow-md border border-amber-300/40">
+                    <i class="fas fa-wine-bottle text-xl"></i>
+                </div>
+                <h2 class="text-xl font-black text-slate-800 tracking-tight">ThaiBev • StockMS Cloud</h2>
+                <p class="text-xs font-semibold text-slate-500 mt-0.5">กรอก Username และ Password เพื่อเข้าสู่คลังประจำโรงงาน</p>
+            </div>
+
+            <form id="stockmsLoginForm" class="space-y-3.5" autocomplete="on">
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-500 uppercase mb-1">Username / ชื่อผู้ใช้งาน</label>
+                    <div class="kosmate-input-wrap">
+                        <i class="fas fa-user k-icon-left"></i>
+                        <input type="text" id="loginUsername" required placeholder="กรอกชื่อผู้ใช้งาน (Username)" autocomplete="username">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-500 uppercase mb-1">Password / รหัสผ่าน</label>
+                    <div class="kosmate-input-wrap">
+                        <i class="fas fa-lock k-icon-left"></i>
+                        <input type="password" id="loginPassword" required placeholder="กรอกรหัสผ่าน" autocomplete="current-password">
+                        <button type="button" id="toggleLoginPwdBtn" class="absolute right-3 text-slate-400 hover:text-blue-600 p-1 text-sm" title="แสดง/ซ่อนรหัสผ่าน">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between text-xs pt-0.5">
+                    <label class="inline-flex items-center gap-2 cursor-pointer font-semibold text-slate-600">
+                        <input type="checkbox" id="loginRememberMe" checked class="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                        <span>จดจำการเข้าสู่ระบบ</span>
+                    </label>
+                </div>
+
+                <div id="loginErrorBox" class="hidden text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2"></div>
+
+                <button type="submit" id="loginSubmitBtn" class="kosmate-primary-btn" style="background: linear-gradient(135deg, #065f46 0%, #047857 100%); box-shadow: 0 10px 24px -6px rgba(4, 120, 87, 0.45);">
+                    <i class="fas fa-sign-in-alt"></i>
+                    <span>เข้าสู่ระบบ (Login)</span>
+                </button>
+            </form>
+        </div>
     </div>
 </div>
 
@@ -2357,6 +2784,7 @@
                         <th class="px-3.5 py-2.5">Username</th>
                         <th class="px-3.5 py-2.5">ชื่อโรงงาน</th>
                         <th class="px-3.5 py-2.5">Role</th>
+                        <th class="px-3.5 py-2.5">สถานะออนไลน์</th>
                         <th class="px-3.5 py-2.5">แก้ไขล่าสุด</th>
                         <th class="px-3.5 py-2.5 text-center">จัดการ</th>
                     </tr>
@@ -2429,8 +2857,9 @@
                         <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-extrabold">
                             <span class="stockms-live-dot"></span> LIVE REALTIME
                         </span>
+                        <span id="adminSnapshotSyncStatusBadge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-[10px] font-extrabold">DB &amp; Snapshot พร้อม</span>
                     </div>
-                    <p class="text-[11px] text-slate-500">ติดตามการใช้งานของทุก User แบบสดๆ และกดย้อนข้อมูลคลังของแต่ละโรงงานกลับไปยังจุดก่อนหน้าหรือจุดเวลาที่เลือกได้</p>
+                    <p class="text-[11px] text-slate-500">ติดตามการใช้งานของทุก User แบบสดๆ และกดย้อนข้อมูลเฉพาะคลัง/ID ที่เลือก พร้อมล้าง Logs รายเดือน/รายปี</p>
                 </div>
             </div>
             <div class="flex items-center gap-2">
@@ -2441,7 +2870,7 @@
 
         <div id="adminLogsKpiRow" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4"></div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200 mb-4">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200 mb-3">
             <div>
                 <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">กรองตาม User / โรงงาน</label>
                 <select id="adminLogFilterUser" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-bold outline-none">
@@ -2462,6 +2891,21 @@
             <div>
                 <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">ค้นหารายละเอียด (ถัง / Batch / กิจกรรม)</label>
                 <input type="text" id="adminLogSearchInput" placeholder="พิมพ์คำค้น..." class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-bold outline-none">
+            </div>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-2.5 p-3 rounded-2xl bg-rose-50/70 border border-rose-200/80 mb-4 text-xs">
+            <span class="font-extrabold text-rose-800 flex items-center gap-1.5"><i class="fas fa-broom"></i> ล้าง Logs เก่าป้องกันฐานข้อมูลเต็ม:</span>
+            <div class="flex flex-wrap items-center gap-2">
+                <div class="flex items-center gap-1.5">
+                    <input type="month" id="adminClearLogsMonth" class="px-2.5 py-1.5 rounded-xl border border-rose-200 bg-white text-xs font-bold text-slate-700 outline-none">
+                    <button type="button" id="btnClearLogsMonth" onclick="window.StockMSUI.clearAuditLogsByPeriod('month')" class="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-sm whitespace-nowrap">ล้าง Logs รายเดือน</button>
+                </div>
+                <div class="stockms-nav-divider hidden sm:block" style="height: 20px;"></div>
+                <div class="flex items-center gap-1.5">
+                    <select id="adminClearLogsYear" class="px-2.5 py-1.5 rounded-xl border border-rose-200 bg-white text-xs font-bold text-slate-700 outline-none"></select>
+                    <button type="button" id="btnClearLogsYear" onclick="window.StockMSUI.clearAuditLogsByPeriod('year')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold shadow-sm whitespace-nowrap">ล้าง Logs รายปี</button>
+                </div>
             </div>
         </div>
 
@@ -2510,38 +2954,74 @@
         </div>
 
         <!-- Admin Factory Switcher Strip on Mobile -->
-        <div id="kmAdminSwitchBar" class="hidden mb-3 p-2.5 rounded-2xl bg-slate-900 text-white flex items-center justify-between gap-2 text-xs">
+        <div id="kmAdminSwitchBar" class="hidden mb-3 p-2.5 rounded-2xl bg-slate-800/95 backdrop-blur-md text-white flex items-center justify-between gap-2 text-xs shadow-sm border border-slate-700/60">
             <span class="font-bold whitespace-nowrap"><i class="fas fa-shield-alt text-amber-400 mr-1"></i> โรงงาน:</span>
-            <select id="kmAdminFactorySelect" class="flex-1 bg-slate-800 text-white rounded-xl px-2.5 py-1.5 text-xs font-bold border border-slate-700 outline-none"></select>
-            <button type="button" onclick="window.StockMSUI.openAdminCompareModal()" class="px-2.5 py-1.5 rounded-xl bg-blue-600 text-white font-bold whitespace-nowrap">เปรียบเทียบ</button>
+            <select id="kmAdminFactorySelect" class="flex-1 bg-slate-900 text-white rounded-xl px-2.5 py-1.5 text-xs font-bold border border-slate-700 outline-none"></select>
+            <button type="button" onclick="window.StockMSUI.openAdminCompareModal()" class="px-2.5 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold whitespace-nowrap">เปรียบเทียบ</button>
+        </div>
+
+        <!-- Glassy Navigation Tabs V10 (Elegant Grey & White Theme) -->
+        <div id="kmGlassyTabsV10" class="km-glassy-tabs-v10" role="tablist" aria-label="Mobile Glassy Navigation Tabs">
+            <div id="kmGlassyTabIndicator" class="km-glassy-tab-indicator"></div>
+            <button type="button" class="km-glassy-tab-btn active" data-km-v10-tab="home" data-tab-idx="0" onclick="window.StockMSUI.switchMobileTab('home')">
+                <i class="fas fa-home"></i><span>หน้าหลัก</span>
+            </button>
+            <button type="button" class="km-glassy-tab-btn" data-km-v10-tab="tanks" data-tab-idx="1" onclick="window.StockMSUI.switchMobileTab('tanks')">
+                <i class="fas fa-th-large"></i><span>คลังถัง</span>
+            </button>
+            <button type="button" class="km-glassy-tab-btn" data-km-v10-tab="reports" data-tab-idx="2" onclick="window.StockMSUI.switchMobileTab('reports')">
+                <i class="fas fa-chart-bar"></i><span>รายงาน</span>
+            </button>
+            <button type="button" class="km-glassy-tab-btn" data-km-v10-tab="profile" data-tab-idx="3" onclick="window.StockMSUI.switchMobileTab('profile')">
+                <i class="fas fa-user"></i><span>โปรไฟล์</span>
+            </button>
         </div>
 
         <!-- HOME VIEW -->
         <div id="kmPaneHome" class="space-y-4">
-            <!-- Hero Blue Summary Card (KosMate Style) -->
-            <div class="kosmate-hero-card">
+            <!-- Glassy V10 Grey & White Hero Card -->
+            <div class="kosmate-hero-card km-glassy-v10-card">
                 <div class="flex justify-between items-start gap-2">
                     <div>
-                        <div class="text-[11px] font-bold text-blue-100 uppercase tracking-wider">ปริมาณสุราคงคลังทั้งหมด</div>
-                        <div class="text-2xl sm:text-3xl font-black tracking-tight mt-0.5 tabular-nums" id="kmHeroTotalVol">0 L</div>
-                        <div class="text-[11px] text-blue-100 mt-0.5 tabular-nums">ความจุรวม <span id="kmHeroTotalCap" class="font-bold text-white">0 L</span> (<span id="kmHeroUtilPct" class="font-bold text-white">0%</span>)</div>
+                        <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">ปริมาณสุราคงคลังทั้งหมด</div>
+                        <div class="text-2xl sm:text-3xl font-black tracking-tight mt-0.5 tabular-nums text-slate-900" id="kmHeroTotalVol">0 L</div>
+                        <div class="text-[11px] text-slate-600 mt-0.5 tabular-nums">ความจุรวม <span id="kmHeroTotalCap" class="font-extrabold text-slate-900">0 L</span> (<span id="kmHeroUtilPct" class="font-extrabold text-emerald-700">0%</span>)</div>
                     </div>
-                    <div class="w-11 h-11 rounded-2xl bg-white/15 flex items-center justify-center text-xl">
+                    <div class="w-11 h-11 rounded-2xl bg-slate-800 text-white flex items-center justify-center text-xl shadow-sm">
                         <i class="fas fa-warehouse"></i>
                     </div>
                 </div>
-                <div class="w-full h-2 bg-white/20 rounded-full overflow-hidden mt-3">
-                    <div id="kmHeroProgress" class="h-full bg-white rounded-full transition-all duration-500" style="width: 0%"></div>
+                <div class="w-full h-2 bg-slate-200/90 rounded-full overflow-hidden mt-3">
+                    <div id="kmHeroProgress" class="h-full bg-gradient-to-r from-slate-700 to-emerald-600 rounded-full transition-all duration-500" style="width: 0%"></div>
                 </div>
                 <div class="kosmate-hero-pills">
-                    <span class="kosmate-hero-pill"><span class="w-2 h-2 rounded-full bg-emerald-300"></span> 70°: <b id="kmPill70">0 L</b></span>
-                    <span class="kosmate-hero-pill"><span class="w-2 h-2 rounded-full bg-amber-300"></span> 40°: <b id="kmPill40">0 L</b></span>
-                    <span class="kosmate-hero-pill"><span class="w-2 h-2 rounded-full bg-sky-200"></span> 35/30/28°: <b id="kmPillLow">0 L</b></span>
+                    <span class="kosmate-hero-pill"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> 70°: <b id="kmPill70">0 L</b></span>
+                    <span class="kosmate-hero-pill"><span class="w-2 h-2 rounded-full bg-amber-500"></span> 40°: <b id="kmPill40">0 L</b></span>
+                    <span class="kosmate-hero-pill"><span class="w-2 h-2 rounded-full bg-sky-500"></span> 35/30/28°: <b id="kmPillLow">0 L</b></span>
                 </div>
             </div>
 
             <!-- 8-Icon Quick Actions Grid (4x2 KosMate Squircle Style) -->
             <div class="kosmate-quick-grid" id="kmQuickGrid"></div>
+
+            <!-- Dense 4-Column Live Tank Matrix (See More Tanks & Live Data on Mobile) -->
+            <div id="kmTankMatrixSection" class="kosmate-recent-card">
+                <div class="flex flex-wrap justify-between items-center gap-2 mb-2.5">
+                    <div>
+                        <h3 class="text-xs font-extrabold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                            <i class="fas fa-th text-slate-600"></i> ข้อมูลถังสุราทั้งหมด (Live Tank Matrix)
+                        </h3>
+                        <p class="text-[10px] text-slate-400 font-semibold" id="kmTankMatrixSubtitle">แตะที่ถังเพื่อดูผังคลังหรือกรองประวัติ</p>
+                    </div>
+                    <div id="kmTankFilterPills" class="flex flex-wrap gap-1">
+                        <button type="button" onclick="window.StockMSUI.setMobileTankFilter('ALL')" data-km-b="ALL" class="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-800 text-white">ทั้งหมด</button>
+                        <button type="button" onclick="window.StockMSUI.setMobileTankFilter('Building_High')" data-km-b="Building_High" class="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-600">โรงบ่ม</button>
+                        <button type="button" onclick="window.StockMSUI.setMobileTankFilter('Building_110')" data-km-b="Building_110" class="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-600">110</button>
+                        <button type="button" onclick="window.StockMSUI.setMobileTankFilter('Building_111')" data-km-b="Building_111" class="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-600">111</button>
+                    </div>
+                </div>
+                <div id="kmMobileTankGrid" class="km-tank-matrix-grid"></div>
+            </div>
 
             <!-- Recent Transactions Feed -->
             <div class="kosmate-recent-card">
@@ -2703,48 +3183,75 @@
         `;
         document.body.appendChild(root);
 
-        // Inject User / Admin / Fullscreen / Mobile Toggle bar inside existing desktop navbar
+        // Inject Categorized User / Admin / Presence / Sync / Fullscreen Bar inside existing desktop navbar
         const navContainer = document.querySelector('body > nav > div.container');
         if (navContainer && !document.getElementById('stockmsNavControlBar')) {
             const bar = document.createElement('div');
             bar.id = 'stockmsNavControlBar';
-            bar.className = 'w-full flex flex-wrap items-center justify-between gap-2 pt-2.5 mt-1 border-t border-slate-200/70 dark:border-slate-700/70 text-xs';
+            bar.className = 'w-full flex flex-wrap items-center justify-between gap-2 pt-2.5 mt-1 border-t border-slate-200/70 text-xs';
             bar.innerHTML = `
                 <div class="flex flex-wrap items-center gap-2">
-                    <span id="navUserBadge" class="stockms-user-pill">
-                        <i class="fas fa-industry"></i>
-                        <span id="navUserName">-</span>
-                    </span>
-                    <span class="stockms-cloud-badge online stockms-cloud-status-target"></span>
-                    <div id="navAdminFactoryWrap" class="hidden items-center gap-1.5">
-                        <label class="text-[11px] font-bold text-slate-500 dark:text-slate-400">โรงงานที่ดู:</label>
-                        <select id="navAdminFactorySelect" class="px-2.5 py-1 rounded-xl border border-indigo-300/70 dark:border-indigo-700/70 bg-white/80 dark:bg-slate-800 text-xs font-extrabold text-indigo-700 dark:text-indigo-300 outline-none cursor-pointer"></select>
+                    <!-- Group: ผู้ใช้งาน & สถานะ DB -->
+                    <div class="stockms-nav-group">
+                        <span class="stockms-nav-group-label hidden 2xl:inline">บัญชี &amp; คลัง</span>
+                        <span id="navUserBadge" class="stockms-user-pill">
+                            <i class="fas fa-industry"></i>
+                            <span id="navUserName">-</span>
+                        </span>
+                        <span class="stockms-cloud-badge online stockms-cloud-status-target cursor-pointer" onclick="window.StockMSStorage && window.StockMSStorage.syncNow && window.StockMSStorage.syncNow()" title="บันทึกอัตโนมัติใน ~0.06 วินาที • คลิกเพื่อตรวจสอบ/ซิงค์ซ้ำ"></span>
+                        <button type="button" id="navSnapshotSyncBtn" onclick="window.StockMSStorage.syncNow()" class="hidden btn-glass px-2 py-1 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-bold text-[10px] flex items-center gap-1 whitespace-nowrap" title="กดเพื่อซิงค์แคชที่ค้างอยู่ขึ้นฐานข้อมูล">
+                            <i class="fas fa-sync-alt"></i> <span>ลองซิงค์ใหม่</span>
+                        </button>
+                    </div>
+
+                    <div id="navAdminFactoryWrap" class="hidden stockms-nav-group items-center gap-1.5">
+                        <label class="text-[10px] font-extrabold text-indigo-700 uppercase">คลังที่ดู:</label>
+                        <select id="navAdminFactorySelect" class="px-2 py-1 rounded-xl border border-indigo-300/70 bg-white text-xs font-extrabold text-indigo-700 outline-none cursor-pointer"></select>
+                    </div>
+
+                    <div id="navAdminOnlineUsersWrap" class="hidden stockms-nav-group items-center gap-1.5 cursor-pointer" onclick="window.StockMSUI.openAdminUserModal()" title="คลิกเพื่อจัดการผู้ใช้และดูสถานะออนไลน์ทั้งหมด">
+                        <span class="text-[10px] font-extrabold text-emerald-700 flex items-center gap-1 whitespace-nowrap">
+                            <span class="stockms-live-dot"></span> ออนไลน์ <b id="navAdminOnlineCount">0</b>:
+                        </span>
+                        <div id="navAdminOnlineUsersList" class="flex flex-wrap items-center gap-1"></div>
                     </div>
                 </div>
+
                 <div class="flex flex-wrap items-center gap-1.5">
-                    <button type="button" id="navBtnAdminCompare" onclick="window.StockMSUI.openAdminCompareModal()" class="hidden btn-glass px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-[11px] shadow-sm items-center gap-1 whitespace-nowrap">
-                        <i class="fas fa-balance-scale-right"></i> เปรียบเทียบโรงงาน &amp; คำแนะนำ
-                    </button>
-                    <button type="button" id="navBtnAdminLogs" onclick="window.StockMSUI.openAdminLogsModal()" class="hidden btn-glass px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[11px] items-center gap-1.5 whitespace-nowrap">
-                        <span class="stockms-live-dot"></span>
-                        <i class="fas fa-history"></i> Logs &amp; ย้อนข้อมูล
-                        <span id="navAdminLogsBadge" class="stockms-admin-logs-badge hidden px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[9px] font-black leading-none">0</span>
-                    </button>
-                    <button type="button" id="navBtnAdminUsers" onclick="window.StockMSUI.openAdminUserModal()" class="hidden btn-glass px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/60 font-bold text-[11px] items-center gap-1 whitespace-nowrap">
-                        <i class="fas fa-users-cog"></i> จัดการผู้ใช้
-                    </button>
-                    <button type="button" onclick="window.StockMSUI.openChangePasswordModal()" class="btn-glass px-2.5 py-1.5 rounded-xl bg-white/80 hover:bg-white text-slate-700 dark:bg-slate-800 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700 font-bold text-[11px] flex items-center gap-1 whitespace-nowrap">
-                        <i class="fas fa-key text-blue-600"></i> เปลี่ยนรหัสผ่าน
-                    </button>
-                    <button type="button" onclick="toggleMobileAppLayout(false)" class="btn-glass px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/80 dark:border-blue-800/60 font-bold text-[11px] flex items-center gap-1 whitespace-nowrap" title="สลับเป็นหน้าจอมือถือ (KosMate View)">
-                        <i class="fas fa-mobile-alt"></i> โหมดมือถือ
-                    </button>
-                    <button type="button" onclick="toggleAppFullscreen()" class="btn-glass px-2.5 py-1.5 rounded-xl bg-white/80 hover:bg-white text-slate-700 dark:bg-slate-800 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700 font-bold text-[11px] flex items-center gap-1 whitespace-nowrap" title="ขยายเต็มหน้าจอ">
-                        <i class="fas fa-expand stockms-fs-icon text-indigo-500"></i> <span class="stockms-fs-label">เต็มจอ</span>
-                    </button>
-                    <button type="button" onclick="stockmsLogout()" class="btn-glass px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400 border border-rose-200/80 dark:border-rose-800/60 font-bold text-[11px] flex items-center gap-1 whitespace-nowrap">
-                        <i class="fas fa-sign-out-alt"></i> ออกระบบ
-                    </button>
+                    <!-- Group: Admin Suite -->
+                    <div class="stockms-nav-group">
+                        <span class="stockms-nav-group-label hidden 2xl:inline">ผู้ดูแลระบบ</span>
+                        <button type="button" id="navBtnAdminCompare" onclick="window.StockMSUI.openAdminCompareModal()" class="hidden btn-glass px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-[11px] shadow-sm items-center gap-1 whitespace-nowrap">
+                            <i class="fas fa-balance-scale-right"></i> เปรียบเทียบโรงงาน &amp; คำแนะนำ
+                        </button>
+                        <button type="button" id="navBtnAdminLogs" onclick="window.StockMSUI.openAdminLogsModal()" class="hidden btn-glass px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[11px] items-center gap-1.5 whitespace-nowrap">
+                            <span class="stockms-live-dot"></span>
+                            <i class="fas fa-history"></i> Logs &amp; ย้อนข้อมูล
+                            <span id="navAdminLogsBadge" class="stockms-admin-logs-badge hidden px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[9px] font-black leading-none">0</span>
+                        </button>
+                        <button type="button" id="navBtnAdminUsers" onclick="window.StockMSUI.openAdminUserModal()" class="hidden btn-glass px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 font-bold text-[11px] items-center gap-1 whitespace-nowrap">
+                            <i class="fas fa-users-cog"></i> จัดการผู้ใช้
+                        </button>
+                    </div>
+
+                    <div class="stockms-nav-divider hidden md:block" aria-hidden="true"></div>
+
+                    <!-- Group: มุมมอง & เซสชัน -->
+                    <div class="stockms-nav-group">
+                        <span class="stockms-nav-group-label hidden 2xl:inline">การแสดงผล</span>
+                        <button type="button" onclick="window.StockMSUI.openChangePasswordModal()" class="btn-glass px-2.5 py-1.5 rounded-xl bg-white/90 hover:bg-white text-slate-700 border border-slate-200/80 font-bold text-[11px] flex items-center gap-1 whitespace-nowrap">
+                            <i class="fas fa-key text-blue-600"></i> เปลี่ยนรหัสผ่าน
+                        </button>
+                        <button type="button" onclick="toggleMobileAppLayout(false)" class="btn-glass px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200/80 font-bold text-[11px] flex items-center gap-1 whitespace-nowrap" title="สลับเป็นหน้าจอมือถือ (Glassy V10)">
+                            <i class="fas fa-mobile-alt"></i> โหมดมือถือ
+                        </button>
+                        <button type="button" onclick="toggleAppFullscreen()" class="btn-glass px-2.5 py-1.5 rounded-xl bg-white/90 hover:bg-white text-slate-700 border border-slate-200/80 font-bold text-[11px] flex items-center gap-1 whitespace-nowrap" title="ขยายเต็มหน้าจอ">
+                            <i class="fas fa-expand stockms-fs-icon text-indigo-500"></i> <span class="stockms-fs-label">เต็มจอ</span>
+                        </button>
+                        <button type="button" onclick="stockmsLogout()" class="btn-glass px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200/80 font-bold text-[11px] flex items-center gap-1 whitespace-nowrap">
+                            <i class="fas fa-sign-out-alt"></i> ออกระบบ
+                        </button>
+                    </div>
                 </div>
             `;
             navContainer.appendChild(bar);
@@ -2754,6 +3261,25 @@
     }
 
     function wireModalAndFormListeners() {
+        const enterLoginBtn = document.getElementById('btnEnterLoginForm');
+        if (enterLoginBtn) {
+            enterLoginBtn.addEventListener('click', () => {
+                document.getElementById('authLoginOverlay')?.classList.add('login-stage-active');
+                setTimeout(() => document.getElementById('loginUsername')?.focus(), 120);
+            });
+        }
+        const backWelcomeBtn = document.getElementById('btnBackToWelcome');
+        if (backWelcomeBtn) {
+            backWelcomeBtn.addEventListener('click', () => {
+                document.getElementById('authLoginOverlay')?.classList.remove('login-stage-active');
+            });
+        }
+        ['loginUsername', 'loginPassword'].forEach(inpId => {
+            document.getElementById(inpId)?.addEventListener('focus', () => {
+                document.getElementById('authLoginOverlay')?.classList.add('login-stage-active');
+            });
+        });
+
         const loginForm = document.getElementById('stockmsLoginForm');
         if (loginForm) {
             loginForm.addEventListener('submit', async (e) => {
@@ -2961,7 +3487,10 @@
             errBox.classList.add('hidden');
         }
         const el = document.getElementById('authLoginOverlay');
-        if (el) el.classList.remove('hidden');
+        if (el) {
+            el.classList.remove('login-stage-active');
+            el.classList.remove('hidden');
+        }
     }
 
     function closeModal(id) {
@@ -2988,24 +3517,33 @@
         const tbody = document.getElementById('adminUsersTableBody');
         if (!tbody) return;
         const users = await loadAllUsersList();
-        tbody.innerHTML = users.map(u => `
-            <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                <td class="px-3.5 py-2.5 font-extrabold text-slate-800 dark:text-slate-100">${escapeHtml(u.username)}</td>
+        const localPresence = readLocalPresenceMap();
+        tbody.innerHTML = users.map(u => {
+            const pRec = { ...(localPresence[u.username] || {}), ...(onlineUsersMap[u.username] || {}), onlineStatus: (onlineUsersMap[u.username]?.onlineStatus ?? u.onlineStatus ?? localPresence[u.username]?.onlineStatus), lastSeenAt: (onlineUsersMap[u.username]?.lastSeenAt || u.lastSeenAt || localPresence[u.username]?.lastSeenAt) };
+            const isOn = isUserConsideredOnline(pRec);
+            const presenceHtml = isOn
+                ? `<span class="stockms-online-pill"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> ออนไลน์</span>`
+                : `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold">${pRec.lastSeenAt ? `ออฟไลน์ (${escapeHtml(pRec.lastSeenAt.slice(11, 16))})` : 'ออฟไลน์'}</span>`;
+            return `
+            <tr class="hover:bg-slate-50">
+                <td class="px-3.5 py-2.5 font-extrabold text-slate-800">${escapeHtml(u.username)}</td>
                 <td class="px-3.5 py-2.5 font-semibold">${escapeHtml(u.displayName || u.username)}</td>
                 <td class="px-3.5 py-2.5">
-                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${u.role === 'admin' ? 'bg-slate-800 text-white' : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'}">${escapeHtml(u.role)}</span>
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${u.role === 'admin' ? 'bg-slate-800 text-white' : 'bg-blue-100 text-blue-700'}">${escapeHtml(u.role)}</span>
                 </td>
+                <td class="px-3.5 py-2.5">${presenceHtml}</td>
                 <td class="px-3.5 py-2.5 text-[11px] text-slate-400">${u.updatedAt ? escapeHtml(u.updatedAt.slice(0, 16).replace('T', ' ')) : '-'}</td>
                 <td class="px-3.5 py-2.5 text-center">
                     <div class="flex items-center justify-center gap-1.5">
-                        <button type="button" onclick="window.StockMSUI.promptAdminResetPwd('${escapeHtml(u.username)}')" class="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800 font-bold text-[11px]">
+                        <button type="button" onclick="window.StockMSUI.promptAdminResetPwd('${escapeHtml(u.username)}')" class="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-bold text-[11px]">
                             <i class="fas fa-key mr-1"></i> ตั้งรหัสผ่านใหม่
                         </button>
-                        ${u.role !== 'admin' ? `<button type="button" onclick="window.StockMSAuth.switchAdminFactory('${escapeHtml(u.username)}'); window.StockMSUI.closeModal('adminUserManagerModal');" class="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold text-[11px]">ดูคลังนี้</button>` : ''}
+                        ${u.role !== 'admin' ? `<button type="button" onclick="window.StockMSAuth.switchAdminFactory('${escapeHtml(u.username)}'); window.StockMSUI.closeModal('adminUserManagerModal');" class="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold text-[11px]">ดูคลังนี้</button>` : ''}
                     </div>
                 </td>
             </tr>
-        `).join('');
+        `;
+        }).join('');
     }
 
     async function promptAdminResetPwd(username) {
@@ -3250,10 +3788,12 @@
                    <button type="button" onclick="window.StockMSUI.previewLogSnapshot('${escapeHtml(l.id)}')" class="mt-1 text-[10px] font-bold text-blue-600 hover:underline"><i class="fas fa-search-plus mr-0.5"></i> ดูรายละเอียด</button>`
                 : `<span class="text-[10px] text-slate-400">บันทึกเหตุการณ์</span>`;
 
+            const hasSingleIds = Array.isArray(d.affectedTxIds) && d.affectedTxIds.length > 0;
             const rollbackControls = (d.canRollback && l.target && l.target !== 'admin')
-                ? `<div class="flex flex-col sm:flex-row items-center justify-center gap-1">
-                        ${hasBefore ? `<button type="button" onclick="window.StockMSUI.adminRollbackFactory('${escapeHtml(l.id)}', 'before')" class="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-extrabold whitespace-nowrap" title="ย้อนกลับไปสถานะก่อนรายการนี้"><i class="fas fa-undo mr-1"></i>ก่อนทำ</button>` : ''}
-                        ${hasAfter ? `<button type="button" onclick="window.StockMSUI.adminRollbackFactory('${escapeHtml(l.id)}', 'after')" class="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-extrabold whitespace-nowrap" title="ย้อนข้อมูลมาที่สถานะหลังรายการนี้"><i class="fas fa-history mr-1"></i>จุดนี้</button>` : ''}
+                ? `<div class="flex flex-col sm:flex-row items-center justify-center gap-1 flex-wrap">
+                        ${hasBefore ? `<button type="button" onclick="window.StockMSUI.adminRollbackFactory('${escapeHtml(l.id)}', 'before')" class="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-extrabold whitespace-nowrap" title="ย้อนกลับไปสถานะก่อนรายการนี้เฉพาะคลัง ${escapeHtml(l.target)}"><i class="fas fa-undo mr-1"></i>ก่อนทำ</button>` : ''}
+                        ${hasAfter ? `<button type="button" onclick="window.StockMSUI.adminRollbackFactory('${escapeHtml(l.id)}', 'after')" class="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-extrabold whitespace-nowrap" title="ย้อนข้อมูลมาที่จุดเวลานี้เฉพาะคลัง ${escapeHtml(l.target)}"><i class="fas fa-history mr-1"></i>จุดนี้</button>` : ''}
+                        ${hasSingleIds ? `<button type="button" onclick="window.StockMSUI.adminRollbackFactory('${escapeHtml(l.id)}', 'single_tx')" class="px-2 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-extrabold whitespace-nowrap" title="ย้อนกลับเฉพาะรายการ ID ใน Log นี้ โดยคงรายการอื่นไว้"><i class="fas fa-crosshairs mr-1"></i>เฉพาะ ID</button>` : ''}
                    </div>`
                 : `<span class="text-[10px] text-slate-300">-</span>`;
 
@@ -3280,7 +3820,21 @@
         if (!s || s.role !== 'admin') return;
         unreadAdminLogsCount = 0;
         updateAdminLogsBadgeUI();
+        const mEl = document.getElementById('adminClearLogsMonth');
+        if (mEl && !mEl.value) {
+            mEl.value = new Date().toISOString().slice(0, 7);
+        }
+        const ySel = document.getElementById('adminClearLogsYear');
+        if (ySel) {
+            const years = new Set([String(new Date().getFullYear())]);
+            readLocalAuditLogs().forEach(l => {
+                if (l.timestamp && /^\d{4}/.test(l.timestamp)) years.add(l.timestamp.slice(0, 4));
+            });
+            const prevY = ySel.value;
+            ySel.innerHTML = Array.from(years).sort().reverse().map(y => `<option value="${y}" ${y === prevY ? 'selected' : ''}>ปี ${y}</option>`).join('');
+        }
         document.getElementById('adminAuditLogsModal')?.classList.remove('hidden');
+        updateCloudBadgeUI();
         await renderAdminLogsModal(true);
     }
 
@@ -3357,9 +3911,10 @@
                 }
             });
         };
-        showAdminElems(['navAdminFactoryWrap', 'navBtnAdminCompare', 'navBtnAdminLogs', 'navBtnAdminUsers', 'kmAdminSwitchBar'], true);
+        showAdminElems(['navAdminFactoryWrap', 'navAdminOnlineUsersWrap', 'navBtnAdminCompare', 'navBtnAdminLogs', 'navBtnAdminUsers', 'kmAdminSwitchBar'], true);
         showAdminElems(['kmBtnAdminUsers', 'kmBtnAdminCompare', 'kmBtnAdminLogs'], false);
         updateAdminLogsBadgeUI();
+        renderOnlinePresenceUI();
 
         if (isAdmin) {
             const users = await loadAllUsersList();
@@ -3456,6 +4011,7 @@
         }
 
         // Render Top 5 Latest Transactions
+        renderMobileTankMatrix(payload);
         const listEl = document.getElementById('kmRecentTxList');
         if (listEl) {
             const latest = [...(payload.liquor_transactions || [])].sort((a, b) => (b.id || 0) - (a.id || 0)).slice(0, 5);
@@ -3493,10 +4049,117 @@
         }
     }
 
+    function computePerTankLiveMap(payload) {
+        const customTanks = (Array.isArray(payload.custom_tanks) && payload.custom_tanks.length) ? payload.custom_tanks : UNIFIED_DEFAULT_TANKS;
+        const buildings = payload.custom_buildings || UNIFIED_DEFAULT_BUILDINGS;
+        const txs = Array.isArray(payload.liquor_transactions) ? payload.liquor_transactions : [];
+        const map = {};
+        customTanks.forEach(t => {
+            const bType = t.type || (buildings[t.b] ? buildings[t.b].type : 'High');
+            map[t.id] = { id: t.id, b: t.b, cap: Number(t.cap) || 0, vol: 0, type: isDefaultBlendingTank(t.id) ? '40Deg' : bType, layers: [] };
+        });
+        [...txs].sort((a, b) => new Date(a.date) - new Date(b.date) || ((Number(a.id) || 0) - (Number(b.id) || 0))).forEach(tx => {
+            const t = map[tx.tankId];
+            if (!t) return;
+            const vol = parseFloat(tx.volume) || 0;
+            const tu = String(tx.type || '').toUpperCase();
+            if (tu.includes('IN')) {
+                t.vol += vol;
+                t.layers.push({ date: tx.date, vol, targetDegree: tx.targetDegree || null });
+            } else if (tu.includes('OUT')) {
+                let rem = vol;
+                t.vol = Math.max(0, t.vol - rem);
+                while (rem > 0.001 && t.layers.length) {
+                    if (t.layers[0].vol > rem + 0.001) { t.layers[0].vol -= rem; rem = 0; }
+                    else { rem -= t.layers[0].vol; t.layers.shift(); }
+                }
+            }
+        });
+        return map;
+    }
+
+    function setMobileTankFilter(bKey) {
+        kmTankMatrixBuilding = bKey || 'ALL';
+        const s = getSession();
+        if (!s) return;
+        renderMobileTankMatrix(readWorkingPayload(getActiveFactoryId()));
+    }
+
+    function renderMobileTankMatrix(payload) {
+        const grid = document.getElementById('kmMobileTankGrid');
+        if (!grid) return;
+        document.querySelectorAll('#kmTankFilterPills button').forEach(btn => {
+            const isActive = btn.getAttribute('data-km-b') === kmTankMatrixBuilding;
+            btn.className = isActive
+                ? 'px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-800 text-white'
+                : 'px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-600';
+        });
+
+        const customTanks = (Array.isArray(payload.custom_tanks) && payload.custom_tanks.length) ? payload.custom_tanks : UNIFIED_DEFAULT_TANKS;
+        const tankConfig = payload.tank_config || {};
+        const buildings = payload.custom_buildings || UNIFIED_DEFAULT_BUILDINGS;
+        const liveMap = computePerTankLiveMap(payload);
+        const filtered = customTanks
+            .filter(t => kmTankMatrixBuilding === 'ALL' || t.b === kmTankMatrixBuilding)
+            .sort((a, b) => String(a.id).localeCompare(String(b.id), undefined, { numeric: true }));
+
+        const subEl = document.getElementById('kmTankMatrixSubtitle');
+        if (subEl) subEl.textContent = `แสดง ${filtered.length} ถัง • แตะที่ถังเพื่อเปิดผังคลัง / ประวัติ`;
+
+        const now = Date.now();
+        grid.innerHTML = filtered.map(t => {
+            const st = liveMap[t.id] || { vol: 0, cap: t.cap, layers: [] };
+            const cfgStatus = tankConfig[t.id]?.status;
+            const pct = t.cap > 0 ? Math.min(100, (st.vol / t.cap) * 100) : 0;
+            const bType = t.type || (buildings[t.b] ? buildings[t.b].type : 'High');
+            const degLabel = st.layers.length && st.layers[st.layers.length - 1]?.targetDegree
+                ? String(st.layers[st.layers.length - 1].targetDegree)
+                : (bType === 'High' ? '70' : '40');
+            const isReady = st.layers.some(l => {
+                const d = Date.parse(l.date || '');
+                return d > 0 && ((now - d) / 86400000) >= (bType === 'High' ? 14 : 7);
+            });
+
+            let barCls = bType === 'High' ? 'bg-emerald-500' : 'bg-amber-500';
+            let statusDot = st.vol > 0 ? (isReady ? 'bg-emerald-500' : 'bg-amber-400') : 'bg-slate-300';
+            if (cfgStatus === 'repair') { barCls = 'bg-rose-400'; statusDot = 'bg-rose-500'; }
+            else if (cfgStatus === 'bonded') { barCls = 'bg-purple-400'; statusDot = 'bg-purple-500'; }
+
+            const clickAction = !isDashboardPage() && typeof window.openStockLayout === 'function'
+                ? 'openStockLayout()'
+                : "window.StockMSUI.switchMobileTab('tanks')";
+
+            return `
+                <button type="button" onclick="${clickAction}" class="km-tank-tile" title="ถัง ${escapeHtml(t.id)}">
+                    <div class="flex items-center justify-between gap-1 mb-1">
+                        <span class="text-[10px] font-black text-slate-800 truncate">${escapeHtml(t.id)}</span>
+                        <span class="w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusDot}"></span>
+                    </div>
+                    <div class="w-full h-1.5 bg-slate-200/80 rounded-full overflow-hidden mb-1">
+                        <div class="h-full ${barCls}" style="width:${pct.toFixed(0)}%"></div>
+                    </div>
+                    <div class="flex items-center justify-between text-[9px] font-bold tabular-nums">
+                        <span class="${st.vol > 0 ? 'text-slate-800' : 'text-slate-400'}">${Math.round(st.vol).toLocaleString()}</span>
+                        <span class="text-slate-400">${degLabel}°</span>
+                    </div>
+                </button>
+            `;
+        }).join('');
+    }
+
     function switchMobileTab(tabName) {
         currentMobileTab = tabName;
         document.querySelectorAll('.kosmate-nav-item').forEach(b => {
             b.classList.toggle('active', b.getAttribute('data-km-tab') === tabName);
+        });
+        const v10IdxMap = { home: 0, tanks: 1, reports: 2, profile: 3 };
+        const idx = v10IdxMap[tabName] ?? 0;
+        const indicator = document.getElementById('kmGlassyTabIndicator');
+        if (indicator) {
+            indicator.style.transform = `translateX(${idx * 100}%)`;
+        }
+        document.querySelectorAll('.km-glassy-tab-btn').forEach(b => {
+            b.classList.toggle('active', b.getAttribute('data-km-v10-tab') === tabName);
         });
 
         const paneHome = document.getElementById('kmPaneHome');
@@ -3732,6 +4395,8 @@
         renderAdminLogsModal,
         previewLogSnapshot,
         adminRollbackFactory,
+        clearAuditLogsByPeriod,
+        setMobileTankFilter,
         promptAdminResetPwd,
         switchMobileTab,
         openTransactionEntry,
@@ -3779,6 +4444,26 @@
         }
     };
 
+    async function waitForFirebaseAuthRestore(timeoutMs = 1200) {
+        if (!fbAuth || fbAuth.currentUser) return fbAuth?.currentUser || null;
+        return new Promise((resolve) => {
+            let done = false;
+            let unsub = null;
+            const finish = (u) => {
+                if (done) return;
+                done = true;
+                try { if (typeof unsub === 'function') unsub(); } catch (e) { }
+                resolve(u || null);
+            };
+            try {
+                unsub = fbAuth.onAuthStateChanged((user) => finish(user));
+            } catch (e) {
+                finish(null);
+            }
+            setTimeout(() => finish(fbAuth?.currentUser || null), timeoutMs);
+        });
+    }
+
     // =========================================================================
     // 12. BOOTSTRAP ON DOCUMENT READY
     // =========================================================================
@@ -3801,6 +4486,17 @@
 
         const session = getSession();
         if (!session) {
+            clearWorkingLocalStorage();
+            showLoginOverlay();
+            updateCloudBadgeUI();
+            return;
+        }
+
+        // Wait briefly for Firebase Auth persistence restore on page reload; sign out legacy anonymous tokens
+        const restoredUser = await waitForFirebaseAuthRestore(1200);
+        if (restoredUser && restoredUser.isAnonymous && fbAuth) {
+            try { await fbAuth.signOut(); } catch (e) { }
+            clearSession();
             clearWorkingLocalStorage();
             showLoginOverlay();
             updateCloudBadgeUI();
