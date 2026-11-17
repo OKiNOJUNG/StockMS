@@ -5,8 +5,8 @@
    ============================================================================ */
 
 /* Global lock state while not authenticated */
-body.stockms-locked > nav,
-body.stockms-locked > main,
+body.stockms-locked>nav,
+body.stockms-locked>main,
 body.stockms-locked #kosmateMobileShell {
     filter: blur(8px);
     pointer-events: none;
@@ -27,6 +27,7 @@ body.stockms-locked #kosmateMobileShell {
     color: #1e40af;
     white-space: nowrap;
 }
+
 .dark .stockms-user-pill {
     color: #93c5fd;
     background: linear-gradient(135deg, rgba(37, 99, 235, 0.25), rgba(79, 70, 229, 0.2));
@@ -43,27 +44,33 @@ body.stockms-locked #kosmateMobileShell {
     font-weight: 700;
     white-space: nowrap;
 }
+
 .stockms-cloud-badge.online {
     background: rgba(16, 185, 129, 0.14);
     color: #047857;
     border: 1px solid rgba(16, 185, 129, 0.3);
 }
+
 .dark .stockms-cloud-badge.online {
     color: #6ee7b7;
 }
+
 .stockms-cloud-badge.syncing {
     background: rgba(245, 158, 11, 0.15);
     color: #b45309;
     border: 1px solid rgba(245, 158, 11, 0.35);
 }
+
 .dark .stockms-cloud-badge.syncing {
     color: #fcd34d;
 }
+
 .stockms-cloud-badge.offline {
     background: rgba(239, 68, 68, 0.12);
     color: #b91c1c;
     border: 1px solid rgba(239, 68, 68, 0.3);
 }
+
 .dark .stockms-cloud-badge.offline {
     color: #fca5a5;
 }
@@ -80,16 +87,19 @@ body.stockms-locked #kosmateMobileShell {
     .glass-card {
         border-radius: 1.25rem !important;
     }
+
     .swal2-popup {
         width: 94vw !important;
         padding: 1.15rem !important;
     }
+
     #dailyReportModal .sticky.top-0,
-    #stockLayoutModal > div > div:first-child,
-    #masterSetupModal > div > div:first-child {
+    #stockLayoutModal>div>div:first-child,
+    #masterSetupModal>div>div:first-child {
         flex-wrap: wrap !important;
         gap: 0.5rem !important;
     }
+
     #masterSetupModal .flex-grow.flex.flex-col {
         overflow-y: auto !important;
     }
@@ -104,6 +114,7 @@ body.stockms-locked #kosmateMobileShell {
         max-width: none !important;
     }
 }
+
 body.kosmate-force-mobile #toastContainer {
     bottom: 5.25rem !important;
     top: auto !important;
@@ -114,18 +125,24 @@ body.kosmate-force-mobile #toastContainer {
    1. KOSMATE LOGIN OVERLAY (Layered Atmospheric Distillery Backdrop & Crest Logo)
    ============================================================================ */
 @keyframes stockmsOrbFloat {
-    0%, 100% {
+
+    0%,
+    100% {
         transform: translate3d(0, 0, 0) scale(1);
     }
+
     50% {
         transform: translate3d(18px, -22px, 0) scale(1.06);
     }
 }
 
 @keyframes stockmsOrbFloatAlt {
-    0%, 100% {
+
+    0%,
+    100% {
         transform: translate3d(0, 0, 0) scale(1);
     }
+
     50% {
         transform: translate3d(-22px, 18px, 0) scale(1.08);
     }
@@ -147,6 +164,7 @@ body.kosmate-force-mobile #toastContainer {
         linear-gradient(135deg, #012217 0%, #004b33 42%, #006747 76%, #054a29 100%);
     font-family: 'Sarabun', sans-serif;
 }
+
 #authLoginOverlay::before {
     content: "";
     position: fixed;
@@ -160,6 +178,7 @@ body.kosmate-force-mobile #toastContainer {
     pointer-events: none;
     z-index: 0;
 }
+
 #authLoginOverlay::after {
     content: "";
     position: fixed;
@@ -168,6 +187,7 @@ body.kosmate-force-mobile #toastContainer {
     pointer-events: none;
     z-index: 0;
 }
+
 #authLoginOverlay.hidden {
     display: none !important;
 }
@@ -179,12 +199,14 @@ body.kosmate-force-mobile #toastContainer {
     pointer-events: none;
     z-index: 0;
 }
+
 .stockms-login-bg-decor .orb {
     position: absolute;
     border-radius: 9999px;
     filter: blur(55px);
     opacity: 0.55;
 }
+
 .stockms-login-bg-decor .orb-1 {
     width: 340px;
     height: 340px;
@@ -193,6 +215,7 @@ body.kosmate-force-mobile #toastContainer {
     background: radial-gradient(circle, rgba(245, 158, 11, 0.62), rgba(180, 83, 9, 0.06));
     animation: stockmsOrbFloat 11s ease-in-out infinite;
 }
+
 .stockms-login-bg-decor .orb-2 {
     width: 310px;
     height: 310px;
@@ -201,6 +224,7 @@ body.kosmate-force-mobile #toastContainer {
     background: radial-gradient(circle, rgba(16, 185, 129, 0.58), rgba(0, 103, 71, 0.06));
     animation: stockmsOrbFloatAlt 13s ease-in-out infinite;
 }
+
 .stockms-login-bg-decor .orb-3 {
     width: 240px;
     height: 240px;
@@ -227,6 +251,7 @@ body.kosmate-force-mobile #toastContainer {
     z-index: 1;
     overflow: hidden;
 }
+
 .kosmate-login-card::before {
     content: "";
     position: absolute;
@@ -252,6 +277,7 @@ body.kosmate-force-mobile #toastContainer {
         0 0 0 6px rgba(37, 99, 235, 0.09),
         inset 0 1px 1px rgba(255, 255, 255, 0.35);
 }
+
 .stockms-logo-emblem svg {
     width: 58px;
     height: 58px;
@@ -264,6 +290,7 @@ body.kosmate-force-mobile #toastContainer {
     display: flex;
     align-items: center;
 }
+
 .kosmate-input-wrap .k-icon-left {
     position: absolute;
     left: 14px;
@@ -271,6 +298,7 @@ body.kosmate-force-mobile #toastContainer {
     font-size: 0.9rem;
     pointer-events: none;
 }
+
 .kosmate-input-wrap input {
     width: 100%;
     padding: 0.78rem 2.5rem 0.78rem 2.55rem;
@@ -283,16 +311,19 @@ body.kosmate-force-mobile #toastContainer {
     outline: none;
     transition: all 0.2s ease;
 }
+
 .dark .kosmate-input-wrap input {
     background: #1e293b;
     border-color: #334155;
     color: #f8fafc;
 }
+
 .kosmate-input-wrap input:focus {
     border-color: #2563eb;
     background: #ffffff;
     box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.14);
 }
+
 .dark .kosmate-input-wrap input:focus {
     background: #0f172a;
 }
@@ -314,10 +345,12 @@ body.kosmate-force-mobile #toastContainer {
     justify-content: center;
     gap: 0.5rem;
 }
+
 .kosmate-primary-btn:hover {
     transform: translateY(-1px);
     box-shadow: 0 14px 28px -6px rgba(37, 99, 235, 0.55);
 }
+
 .kosmate-primary-btn:active {
     transform: scale(0.985);
 }
@@ -333,13 +366,16 @@ body.kosmate-force-mobile #toastContainer {
     body:not(.kosmate-force-desktop) #kosmateMobileShell {
         display: block;
     }
-    body:not(.kosmate-force-desktop) > nav.sticky {
+
+    body:not(.kosmate-force-desktop)>nav.sticky {
         display: none !important;
     }
-    body:not(.kosmate-force-desktop) > main {
+
+    body:not(.kosmate-force-desktop)>main {
         padding-bottom: 6.25rem !important;
     }
-    body:not(.kosmate-force-desktop).kosmate-tab-active > main {
+
+    body:not(.kosmate-force-desktop).kosmate-tab-active>main {
         display: none !important;
     }
 }
@@ -350,10 +386,12 @@ body.kosmate-force-mobile #kosmateMobileShell {
     max-width: 460px;
     margin: 0 auto 5.5rem;
 }
-body.kosmate-force-mobile > nav.sticky {
+
+body.kosmate-force-mobile>nav.sticky {
     display: none !important;
 }
-body.kosmate-force-mobile.kosmate-tab-active > main {
+
+body.kosmate-force-mobile.kosmate-tab-active>main {
     display: none !important;
 }
 
@@ -378,14 +416,17 @@ body.kosmate-force-mobile.kosmate-tab-active > main {
     color: #0f172a;
     line-height: 1.25;
 }
+
 .dark .kosmate-greeting h2 {
     color: #f8fafc;
 }
+
 .kosmate-greeting p {
     font-size: 0.72rem;
     color: #64748b;
     font-weight: 600;
 }
+
 .dark .kosmate-greeting p {
     color: #94a3b8;
 }
@@ -406,6 +447,7 @@ body.kosmate-force-mobile.kosmate-tab-active > main {
     cursor: pointer;
     flex-shrink: 0;
 }
+
 .dark .kosmate-icon-btn {
     background: rgba(30, 41, 59, 0.9);
     border-color: rgba(51, 65, 85, 0.8);
@@ -422,6 +464,7 @@ body.kosmate-force-mobile.kosmate-tab-active > main {
     overflow: hidden;
     margin-bottom: 1.1rem;
 }
+
 .kosmate-hero-card::after {
     content: "";
     position: absolute;
@@ -440,6 +483,7 @@ body.kosmate-force-mobile.kosmate-tab-active > main {
     gap: 0.45rem;
     margin-top: 0.85rem;
 }
+
 .kosmate-hero-pill {
     display: inline-flex;
     align-items: center;
@@ -461,6 +505,7 @@ body.kosmate-force-mobile.kosmate-tab-active > main {
     gap: 0.75rem 0.45rem;
     margin-bottom: 1.25rem;
 }
+
 .kosmate-quick-item {
     display: flex;
     flex-direction: column;
@@ -472,6 +517,7 @@ body.kosmate-force-mobile.kosmate-tab-active > main {
     cursor: pointer;
     text-align: center;
 }
+
 .kosmate-squircle {
     width: 52px;
     height: 52px;
@@ -484,15 +530,18 @@ body.kosmate-force-mobile.kosmate-tab-active > main {
     transition: transform 0.15s ease;
     position: relative;
 }
+
 .kosmate-quick-item:active .kosmate-squircle {
     transform: scale(0.93);
 }
+
 .kosmate-quick-label {
     font-size: 0.7rem;
     font-weight: 700;
     color: #334155;
     line-height: 1.2;
 }
+
 .dark .kosmate-quick-label {
     color: #cbd5e1;
 }
@@ -505,6 +554,7 @@ body.kosmate-force-mobile.kosmate-tab-active > main {
     padding: 1rem;
     box-shadow: 0 8px 24px -8px rgba(15, 23, 42, 0.07);
 }
+
 .dark .kosmate-recent-card {
     background: rgba(15, 23, 42, 0.85);
     border-color: rgba(51, 65, 85, 0.7);
@@ -518,9 +568,11 @@ body.kosmate-force-mobile.kosmate-tab-active > main {
     padding: 0.65rem 0.4rem;
     border-bottom: 1px solid rgba(226, 232, 240, 0.65);
 }
+
 .dark .kosmate-tx-row {
     border-bottom-color: rgba(51, 65, 85, 0.6);
 }
+
 .kosmate-tx-row:last-child {
     border-bottom: none;
     padding-bottom: 0.15rem;
@@ -534,10 +586,12 @@ body.kosmate-force-mobile.kosmate-tab-active > main {
     overflow: hidden;
     box-shadow: 0 8px 24px -8px rgba(15, 23, 42, 0.07);
 }
+
 .dark .kosmate-profile-list {
     background: rgba(15, 23, 42, 0.85);
     border-color: rgba(51, 65, 85, 0.7);
 }
+
 .kosmate-profile-item {
     width: 100%;
     display: flex;
@@ -553,10 +607,12 @@ body.kosmate-force-mobile.kosmate-tab-active > main {
     font-weight: 700;
     color: #1e293b;
 }
+
 .dark .kosmate-profile-item {
     border-bottom-color: rgba(51, 65, 85, 0.6);
     color: #f1f5f9;
 }
+
 .kosmate-profile-item:last-child {
     border-bottom: none;
 }
@@ -579,10 +635,12 @@ body.kosmate-force-mobile.kosmate-tab-active > main {
     z-index: 65;
     box-shadow: 0 -6px 24px rgba(15, 23, 42, 0.08);
 }
+
 .dark .kosmate-bottom-nav {
     background: rgba(15, 23, 42, 0.96);
     border-top-color: rgba(51, 65, 85, 0.85);
 }
+
 body.kosmate-force-mobile .kosmate-bottom-nav {
     max-width: 460px;
     margin: 0 auto;
@@ -605,15 +663,19 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     cursor: pointer;
     height: 100%;
 }
+
 .dark .kosmate-nav-item {
     color: #94a3b8;
 }
+
 .kosmate-nav-item.active {
     color: #2563eb;
 }
+
 .dark .kosmate-nav-item.active {
     color: #60a5fa;
 }
+
 .kosmate-nav-item i {
     font-size: 1.05rem;
 }
@@ -624,6 +686,7 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     justify-content: center;
     position: relative;
 }
+
 .kosmate-fab-btn {
     width: 52px;
     height: 52px;
@@ -640,9 +703,11 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     cursor: pointer;
     transition: transform 0.15s ease;
 }
+
 .dark .kosmate-fab-btn {
     border-color: #0f172a;
 }
+
 .kosmate-fab-btn:active {
     transform: translateY(-14px) scale(0.93);
 }
@@ -664,9 +729,11 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     overflow-y: auto;
     font-family: 'Sarabun', sans-serif;
 }
+
 .stockms-modal-backdrop.hidden {
     display: none !important;
 }
+
 .stockms-modal-card {
     width: 100%;
     max-width: 96vw;
@@ -678,6 +745,7 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     box-shadow: 0 25px 60px -15px rgba(15, 23, 42, 0.35);
     color: #0f172a;
 }
+
 .dark .stockms-modal-card {
     background: #0f172a;
     border-color: rgba(51, 65, 85, 0.8);
@@ -696,6 +764,7 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     position: relative;
     flex-shrink: 0;
 }
+
 .stockms-live-dot::after {
     content: "";
     position: absolute;
@@ -704,9 +773,17 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     background: rgba(16, 185, 129, 0.45);
     animation: stockmsLivePulse 1.6s ease-out infinite;
 }
+
 @keyframes stockmsLivePulse {
-    0%   { transform: scale(0.8); opacity: 0.9; }
-    100% { transform: scale(2.1); opacity: 0; }
+    0% {
+        transform: scale(0.8);
+        opacity: 0.9;
+    }
+
+    100% {
+        transform: scale(2.1);
+        opacity: 0;
+    }
 }
 
 .stockms-log-badge {
@@ -720,22 +797,27 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     letter-spacing: 0.01em;
     white-space: nowrap;
 }
+
 .stockms-log-badge.tx {
     background: #dbeafe;
     color: #1d4ed8;
 }
+
 .stockms-log-badge.settings {
     background: #ede9fe;
     color: #6d28d9;
 }
+
 .stockms-log-badge.data {
     background: #fef3c7;
     color: #b45309;
 }
+
 .stockms-log-badge.auth {
     background: #f1f5f9;
     color: #334155;
 }
+
 .stockms-log-badge.rollback {
     background: #ffe4e6;
     color: #be123c;
@@ -758,10 +840,19 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     color: #0f172a;
     animation: stockmsToastIn 0.25s ease-out;
 }
+
 @keyframes stockmsToastIn {
-    from { opacity: 0; transform: translateY(-10px) scale(0.97); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
+    from {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.97);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
+
 @media (max-width: 900px) {
     .stockms-realtime-toast {
         top: auto;
@@ -795,6 +886,7 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     touch-action: none;
     font-family: 'Sarabun', sans-serif;
 }
+
 .kosmate-radial-overlay.open {
     opacity: 1;
     pointer-events: auto;
@@ -811,6 +903,7 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
     pointer-events: none;
 }
+
 .kosmate-radial-hint.active-target {
     background: rgba(75, 131, 100, 0.92);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
@@ -842,9 +935,11 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     pointer-events: none;
     transition: transform 0.26s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
+
 .kosmate-radial-overlay.open .kosmate-radial-dome {
     transform: translateX(-50%) scale(1);
 }
+
 .kosmate-radial-dome::after {
     content: "";
     position: absolute;
@@ -874,25 +969,30 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     z-index: 3;
     transition: transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.18s ease;
 }
+
 .kosmate-radial-overlay.open .kosmate-radial-item {
     transform: translate(-50%, 0) scale(1);
     opacity: 1;
 }
+
 .kosmate-radial-item[data-radial-slot="0"] {
     left: 16%;
     bottom: 92px;
     transition-delay: 0.02s;
 }
+
 .kosmate-radial-item[data-radial-slot="1"] {
     left: 37%;
     bottom: 164px;
     transition-delay: 0.05s;
 }
+
 .kosmate-radial-item[data-radial-slot="2"] {
     left: 63%;
     bottom: 164px;
     transition-delay: 0.08s;
 }
+
 .kosmate-radial-item[data-radial-slot="3"] {
     left: 84%;
     bottom: 92px;
@@ -911,6 +1011,7 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.18), 0 8px 20px rgba(0, 0, 0, 0.22);
     transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
 }
+
 .kosmate-radial-circle svg {
     width: 28px;
     height: 28px;
@@ -920,6 +1021,7 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     stroke-linecap: round;
     stroke-linejoin: round;
 }
+
 .kosmate-radial-item.is-active .kosmate-radial-circle,
 .kosmate-radial-item:hover .kosmate-radial-circle {
     transform: scale(1.16);
@@ -952,10 +1054,12 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     cursor: pointer;
     transition: transform 0.2s ease, background 0.2s ease;
 }
+
 .kosmate-radial-close-btn:active {
     transform: scale(0.92);
     background: #3d6e53;
 }
+
 .kosmate-radial-close-btn svg {
     width: 24px;
     height: 24px;
@@ -974,19 +1078,30 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
 .thaibev-welcome-stage {
     animation: stockmsStageFade 0.28s ease-out;
 }
+
 .thaibev-login-stage {
     display: none;
     animation: stockmsStageFade 0.28s ease-out;
 }
+
 #authLoginOverlay.login-stage-active .thaibev-welcome-stage {
     display: none;
 }
+
 #authLoginOverlay.login-stage-active .thaibev-login-stage {
     display: block;
 }
+
 @keyframes stockmsStageFade {
-    from { opacity: 0; transform: translateY(8px) scale(0.985); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.985);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 
 .thaibev-crest-card {
@@ -999,6 +1114,7 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     border: 1px solid rgba(212, 175, 55, 0.42);
     box-shadow: 0 18px 40px -12px rgba(2, 44, 34, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
+
 .thaibev-crest-card::after {
     content: "";
     position: absolute;
@@ -1010,11 +1126,13 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     background: radial-gradient(circle, rgba(212, 175, 55, 0.24), transparent 70%);
     pointer-events: none;
 }
+
 .thaibev-gold-text {
     background: linear-gradient(90deg, #fde68a 0%, #f59e0b 55%, #fef3c7 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
 }
+
 .thaibev-feature-pill {
     background: rgba(255, 255, 255, 0.85);
     backdrop-filter: blur(10px);
@@ -1044,6 +1162,7 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.9), 0 8px 24px -10px rgba(15, 23, 42, 0.16);
     margin-bottom: 0.95rem;
 }
+
 .km-glassy-tab-indicator {
     position: absolute;
     top: 5px;
@@ -1058,6 +1177,7 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     pointer-events: none;
     z-index: 0;
 }
+
 .km-glassy-tab-btn {
     position: relative;
     z-index: 1;
@@ -1076,10 +1196,12 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     cursor: pointer;
     transition: color 0.18s ease, transform 0.18s ease;
 }
+
 .km-glassy-tab-btn:hover {
     color: #334155;
     transform: translateY(-1px);
 }
+
 .km-glassy-tab-btn.active {
     color: #0f172a;
     font-weight: 800;
@@ -1094,9 +1216,11 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
 }
+
 .kosmate-hero-card.km-glassy-v10-card::after {
     background: radial-gradient(circle, rgba(148, 163, 184, 0.18), transparent 70%);
 }
+
 .kosmate-hero-card.km-glassy-v10-card .kosmate-hero-pill {
     background: rgba(255, 255, 255, 0.82);
     color: #1e293b;
@@ -1107,10 +1231,12 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     background: rgba(248, 250, 252, 0.90) !important;
     border-top: 1px solid rgba(226, 232, 240, 0.95) !important;
 }
+
 .kosmate-nav-item.active {
     color: #0f172a !important;
     font-weight: 800;
 }
+
 .kosmate-fab-btn {
     background: linear-gradient(135deg, #334155 0%, #0f172a 100%) !important;
     box-shadow: 0 8px 22px rgba(15, 23, 42, 0.35) !important;
@@ -1122,6 +1248,7 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0.42rem;
 }
+
 .km-tank-tile {
     background: rgba(255, 255, 255, 0.86);
     border: 1px solid rgba(226, 232, 240, 0.9);
@@ -1131,6 +1258,7 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     transition: transform 0.15s ease, box-shadow 0.15s ease;
     cursor: pointer;
 }
+
 .km-tank-tile:active {
     transform: scale(0.96);
 }
@@ -1142,19 +1270,23 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     gap: 1.5rem 0.85rem;
     justify-items: center;
 }
+
 @media (max-width: 768px) {
     .stockms-stock-layout-grid {
         grid-template-columns: repeat(5, minmax(0, 1fr));
         gap: 0.95rem 0.35rem;
     }
+
     .stockms-stock-tank-card {
         width: 100% !important;
         max-width: 68px;
     }
+
     .stockms-stock-tank-card .tank-3d-wrapper {
         width: 44px;
         margin: 0 auto;
     }
+
     .stockms-stock-tank-card .tank-3d {
         width: 44px;
         height: 62px !important;
@@ -1169,12 +1301,14 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     touch-action: pan-x pan-y;
     overscroll-behavior-x: contain;
 }
+
 .stockms-zone-grid-scroll {
     width: 100%;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     padding-bottom: 0.4rem;
 }
+
 .stockms-zone-tank-id {
     writing-mode: vertical-rl;
     transform: rotate(180deg);
@@ -1197,6 +1331,7 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     margin: 0 0.2rem;
     flex-shrink: 0;
 }
+
 .stockms-nav-group {
     display: inline-flex;
     flex-wrap: wrap;
@@ -1207,6 +1342,7 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     background: rgba(248, 250, 252, 0.72);
     border: 1px solid rgba(226, 232, 240, 0.9);
 }
+
 .stockms-nav-group-label {
     font-size: 9px;
     font-weight: 800;
@@ -1216,6 +1352,7 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     padding: 0 0.25rem;
     white-space: nowrap;
 }
+
 .stockms-online-pill {
     display: inline-flex;
     align-items: center;
@@ -1230,13 +1367,95 @@ body.kosmate-force-mobile .kosmate-bottom-nav {
     white-space: nowrap;
 }
 
-/* Ensure full-screen app modals sit cleanly above mobile bottom navigation bar */
+/* Ensure full-screen app modals sit cleanly above mobile bottom navigation bar and stack dynamically */
 #dailyReportModal,
 #stockLayoutModal,
 #auditReportModal,
 #masterSetupModal,
 #reconcileModal,
-#qcAnomalyModal {
-    z-index: 8600 !important;
+#qcAnomalyModal,
+#customQcParamModal {
+    z-index: 8600;
 }
 
+/* Guarantee SweetAlert2 dialogs & secondary overlays ALWAYS render above any active modal */
+.swal2-container,
+body>.swal2-container {
+    z-index: 99990 !important;
+}
+
+/* iPhone / iOS & Cross-Page Seamless Immersive Fullscreen Mode */
+html.stockms-immersive-fs,
+body.stockms-immersive-fs {
+    min-height: 100dvh !important;
+    min-height: -webkit-fill-available !important;
+    width: 100% !important;
+    overscroll-behavior: contain;
+}
+
+body.stockms-immersive-fs {
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+#stockmsSeamlessHostFrame {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100dvh;
+    height: -webkit-fill-available;
+    border: 0;
+    z-index: 9400;
+    background: #f8fafc;
+}
+
+#stockmsSeamlessHostFrame.hidden {
+    display: none !important;
+}
+
+/* Pending 24h QC Badge & Comparison Table Mobile Polish */
+.stockms-qc-alert-btn {
+    position: relative;
+}
+
+.stockms-qc-alert-badge {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+.stockms-compare-table-scroll {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
+}
+
+.stockms-compare-table-scroll th,
+.stockms-compare-table-scroll td {
+    white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+    .stockms-compare-table-scroll table {
+        font-size: 11px;
+    }
+
+    .stockms-compare-table-scroll th,
+    .stockms-compare-table-scroll td {
+        padding: 0.5rem 0.55rem !important;
+    }
+
+    #adminCompareModal .stockms-modal-card {
+        padding: 0.9rem !important;
+        border-radius: 20px;
+    }
+}

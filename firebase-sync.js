@@ -63,6 +63,7 @@
     const MAX_LOCAL_SNAPSHOTS = 40;
     const TENANT_PREFIX = 'stockms_tenant::';
     const AUTH_EMAIL_DOMAIN = 'stockms-ac899.firebaseapp.com';
+    const FULLSCREEN_PREF_KEY = 'stockms_immersive_fullscreen';
     const TX_CHUNK_SIZE = 350;
 
     // Default Tank & Building Definitions (Unified across index.html & dashboard.html)
@@ -405,13 +406,26 @@
     async function publishUserPresence(onlineStatus = true) {
         const s = getSession();
         if (!s || !s.username) return;
-        const entry = saveLocalPresenceEntry(s.username, s.displayName, s.role, getActiveFactoryId(), onlineStatus);
+        const activeFactory = getActiveFactoryId();
+        const entry = saveLocalPresenceEntry(s.username, s.displayName, s.role, activeFactory, onlineStatus);
         try {
             globalBcChannel?.postMessage({ type: 'USER_PRESENCE_HEARTBEAT', entry });
         } catch (e) { }
         renderOnlinePresenceUI();
         if (fbDb && fbAuth?.currentUser) {
             const nowIso = new Date().toISOString();
+            const presencePayload = {
+                username: s.username,
+                displayName: s.displayName || s.username,
+                role: s.role || 'factory',
+                activeFactory: activeFactory || s.username,
+                onlineStatus: !!onlineStatus,
+                lastSeenAt: nowIso,
+                updatedAt: nowIso
+            };
+            try {
+                await fbDb.collection('presence').doc(s.username).set(presencePayload, { merge: true });
+            } catch (e) { /* Ignore if offline */ }
             try {
                 await fbDb.collection('users').doc(s.username).update({
                     authUid: fbAuth.currentUser.uid,
@@ -431,32 +445,54 @@
         }, 25000);
     }
 
+    function getMergedPresenceList() {
+        const merged = { ...readLocalPresenceMap(), ...onlineUsersMap };
+        return Object.values(merged)
+            .filter(isUserConsideredOnline)
+            .sort((a, b) => (a.username === 'admin' ? -1 : a.username.localeCompare(b.username)));
+    }
+
     function renderOnlinePresenceUI() {
         const s = getSession();
         const wrap = document.getElementById('navAdminOnlineUsersWrap');
         const listEl = document.getElementById('navAdminOnlineUsersList');
         const countEl = document.getElementById('navAdminOnlineCount');
+        const activeNow = getMergedPresenceList();
+
         if (wrap) {
-            if (!s || s.role !== 'admin') {
+            if (!s) {
                 wrap.classList.add('hidden');
+                wrap.classList.remove('flex');
             } else {
-                const merged = { ...readLocalPresenceMap(), ...onlineUsersMap };
-                const activeNow = Object.values(merged)
-                    .filter(isUserConsideredOnline)
-                    .sort((a, b) => (a.username === 'admin' ? -1 : a.username.localeCompare(b.username)));
                 wrap.classList.remove('hidden');
+                wrap.classList.add('flex');
                 if (countEl) countEl.textContent = String(activeNow.length);
                 if (listEl) {
                     listEl.innerHTML = activeNow.length
                         ? activeNow.slice(0, 5).map(u => `<span class="stockms-online-pill" title="${escapeHtml(u.displayName || u.username)} (${escapeHtml(u.activeFactory || u.username)})"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>${escapeHtml(u.username)}</span>`).join('')
                         + (activeNow.length > 5 ? `<span class="text-[10px] font-bold text-slate-500">+${activeNow.length - 5}</span>` : '')
-                        : '<span class="text-[10px] text-slate-400">ไม่มีผู้ใช้งานอื่นออนไลน์</span>';
+                        : '<span class="text-[10px] text-slate-400">ออนไลน์: 0</span>';
                 }
             }
         }
+
+        const kmOnlineCount = document.getElementById('kmOnlineCount');
+        const kmOnlinePills = document.getElementById('kmOnlineUsersPills');
+        if (kmOnlineCount) kmOnlineCount.textContent = String(activeNow.length);
+        if (kmOnlinePills) {
+            kmOnlinePills.innerHTML = activeNow.length
+                ? activeNow.slice(0, 6).map(u => `<span class="stockms-online-pill"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>${escapeHtml(u.username)}</span>`).join('')
+                + (activeNow.length > 6 ? `<span class="text-[10px] font-bold text-slate-500">+${activeNow.length - 6}</span>` : '')
+                : '<span class="text-[10px] text-slate-400">ยังไม่มีผู้ใช้งานออนไลน์</span>';
+        }
+
         const usersModal = document.getElementById('adminUserManagerModal');
         if (s?.role === 'admin' && usersModal && !usersModal.classList.contains('hidden')) {
             renderAdminUsersTable();
+        }
+        const onlineModal = document.getElementById('onlineUsersModal');
+        if (s && onlineModal && !onlineModal.classList.contains('hidden')) {
+            renderOnlineUsersModalBody();
         }
     }
 
@@ -466,25 +502,44 @@
             unsubscribeUsersPresenceSnap = null;
         }
         const s = getSession();
-        if (!s || s.role !== 'admin') return;
+        if (!s) return;
         renderOnlinePresenceUI();
         if (!fbDb || !fbAuth?.currentUser) return;
-        unsubscribeUsersPresenceSnap = fbDb.collection('users').onSnapshot((snap) => {
-            snap.forEach(doc => {
-                const d = doc.data() || {};
-                if (d.username) {
-                    onlineUsersMap[d.username] = {
-                        username: d.username,
-                        displayName: d.displayName || d.username,
-                        role: d.role || 'factory',
-                        activeFactory: d.username === 'admin' ? getActiveFactoryId() : d.username,
-                        onlineStatus: d.onlineStatus === true,
-                        lastSeenAt: d.lastSeenAt || d.updatedAt || null
-                    };
-                }
-            });
+
+        const handlePresenceDoc = (d) => {
+            if (!d || !d.username) return;
+            const prev = onlineUsersMap[d.username] || {};
+            const prevTs = Date.parse(prev.lastSeenAt || prev.updatedAt || '0') || 0;
+            const nextTs = Date.parse(d.lastSeenAt || d.updatedAt || '0') || 0;
+            if (nextTs >= prevTs || !prev.lastSeenAt) {
+                onlineUsersMap[d.username] = {
+                    username: d.username,
+                    displayName: d.displayName || d.username,
+                    role: d.role || 'factory',
+                    activeFactory: d.activeFactory || (d.username === 'admin' ? getActiveFactoryId() : d.username),
+                    onlineStatus: d.onlineStatus === true,
+                    lastSeenAt: d.lastSeenAt || d.updatedAt || null
+                };
+            }
+        };
+
+        const unsubPresence = fbDb.collection('presence').onSnapshot((snap) => {
+            snap.forEach(doc => handlePresenceDoc(doc.data() || {}));
             renderOnlinePresenceUI();
         }, () => { });
+
+        let unsubUsers = null;
+        if (s.role === 'admin') {
+            unsubUsers = fbDb.collection('users').onSnapshot((snap) => {
+                snap.forEach(doc => handlePresenceDoc(doc.data() || {}));
+                renderOnlinePresenceUI();
+            }, () => { });
+        }
+
+        unsubscribeUsersPresenceSnap = () => {
+            try { unsubPresence(); } catch (e) { }
+            if (unsubUsers) try { unsubUsers(); } catch (e) { }
+        };
     }
 
     function clearSession() {
@@ -1180,9 +1235,18 @@
 
         const cap70 = (globalSettings.cap70 && Number(globalSettings.cap70) > 0) ? Number(globalSettings.cap70) : totalHighCap;
         const cap40 = (globalSettings.cap40 && Number(globalSettings.cap40) > 0) ? Number(globalSettings.cap40) : total40Cap;
-        const totalVol = v70 + v40 + v35 + v30 + v28;
+        const v40Total = v40 + v35 + v30 + v28;
+        const totalVol = v70 + v40Total;
         const totalCap = cap70 + cap40;
         const utilizationPct = totalCap > 0 ? (totalVol / totalCap) * 100 : 0;
+        const util70Pct = cap70 > 0 ? (v70 / cap70) * 100 : 0;
+        const util40Pct = cap40 > 0 ? (v40Total / cap40) * 100 : 0;
+        const freeCap70 = Math.max(0, Math.round(cap70 - v70));
+        const freeCap40 = Math.max(0, Math.round(cap40 - v40Total));
+        const freeCapTotal = Math.max(0, Math.round(totalCap - totalVol));
+        const shortfallTo95 = Math.max(0, Math.round((totalCap * 0.95) - totalVol));
+        const shortfall70To95 = Math.max(0, Math.round((cap70 * 0.95) - v70));
+        const shortfall40To95 = Math.max(0, Math.round((cap40 * 0.95) - v40Total));
         const qcPassRate = qcTotal > 0 ? ((qcTotal - qcIssues) / qcTotal) * 100 : 100;
         const daysLeft70 = planningData.highUsage > 0 ? Math.floor(v70 / (planningData.highUsage / 30)) : null;
 
@@ -1197,12 +1261,21 @@
             cap70: Math.round(cap70),
             cap40: Math.round(cap40),
             utilizationPct: Number(utilizationPct.toFixed(1)),
+            util70Pct: Number(util70Pct.toFixed(1)),
+            util40Pct: Number(util40Pct.toFixed(1)),
             v70: Math.round(v70),
             v40: Math.round(v40),
+            v40Total: Math.round(v40Total),
             v35: Math.round(v35),
             v30: Math.round(v30),
             v28: Math.round(v28),
             vLowOther: Math.round(v35 + v30 + v28),
+            freeCap70,
+            freeCap40,
+            freeCapTotal,
+            shortfallTo95,
+            shortfall70To95,
+            shortfall40To95,
             ready70: Math.round(ready70),
             aging70: Math.round(aging70),
             bondedCount,
@@ -1227,52 +1300,86 @@
                 riskLevel: 'watch',
                 headline: 'โรงงานนี้ยังไม่ได้นำเข้าข้อมูลเริ่มต้นหรือตั้งค่าฐานข้อมูลแรกเข้า',
                 recommendations: [
-                    { level: 'warn', text: 'ให้ผู้ใช้งานโรงงาน Login เข้าสู่ระบบเพื่อ Import ไฟล์ Backup JSON หรือกดเริ่มต้นใช้งานใหม่' }
+                    { level: 'warn', text: '1) ตั้งค่าฐานข้อมูล: ให้ผู้ใช้งานโรงงาน Login เข้าสู่ระบบเพื่อ Import ไฟล์ Backup JSON หรือกดเริ่มต้นใช้งานใหม่' }
                 ]
             };
         }
 
-        if (analytics.utilizationPct >= 88) {
-            riskLevel = 'critical';
-            recs.push({ level: 'critical', text: `พื้นที่จัดเก็บใกล้เต็ม (${analytics.utilizationPct}%) — ควรเร่งจ่ายบรรจุหรือกระจายสุราเข้าถังว่าง/โรงงานเครือข่าย` });
-        } else if (analytics.utilizationPct < 20 && analytics.txCount > 0) {
+        const cap70 = Number(analytics.cap70) || 0;
+        const cap40 = Number(analytics.cap40) || 0;
+        const v70 = Number(analytics.v70) || 0;
+        const v40Total = Number(analytics.v40Total !== undefined ? analytics.v40Total : ((analytics.v40 || 0) + (analytics.vLowOther || 0)));
+        const freeCap70 = Number(analytics.freeCap70 !== undefined ? analytics.freeCap70 : Math.max(0, cap70 - v70));
+        const freeCap40 = Number(analytics.freeCap40 !== undefined ? analytics.freeCap40 : Math.max(0, cap40 - v40Total));
+        const util70 = Number(analytics.util70Pct !== undefined ? analytics.util70Pct : (cap70 > 0 ? (v70 / cap70) * 100 : 0));
+        const util40 = Number(analytics.util40Pct !== undefined ? analytics.util40Pct : (cap40 > 0 ? (v40Total / cap40) * 100 : 0));
+        const shortfall95 = Number(analytics.shortfallTo95 !== undefined ? analytics.shortfallTo95 : Math.max(0, Math.round((analytics.totalCap * 0.95) - analytics.totalVol)));
+        const shortfall70 = Number(analytics.shortfall70To95 !== undefined ? analytics.shortfall70To95 : Math.max(0, Math.round((cap70 * 0.95) - v70)));
+        const shortfall40 = Number(analytics.shortfall40To95 !== undefined ? analytics.shortfall40To95 : Math.max(0, Math.round((cap40 * 0.95) - v40Total)));
+
+        // Topic 1: Policy Compliance (>= 95% Factory Stock Level)
+        if (analytics.utilizationPct >= 95) {
+            recs.push({ level: 'ok', text: `1) นโยบายสต็อก ≥95%: ผ่านเกณฑ์ตามนโยบาย (${analytics.utilizationPct}% ของความจุรวม, เหลือพื้นที่ว่างรวม ${(analytics.freeCapTotal ?? (freeCap70 + freeCap40)).toLocaleString()} L) ควรคุมรับ-จ่ายให้สมดุลไม่ให้เกิน Working Volume 100%` });
+        } else if (analytics.utilizationPct >= 85) {
             if (riskLevel === 'normal') riskLevel = 'watch';
-            recs.push({ level: 'warn', text: `ปริมาณสต็อกคงคลังค่อนข้างต่ำ (${analytics.utilizationPct}%) — ควรตรวจสอบแผนรับกลั่นล่วงหน้า` });
-        }
-
-        if (analytics.v70 > 0) {
-            const readyRatio = (analytics.ready70 / analytics.v70) * 100;
-            if (readyRatio < 25) {
-                if (riskLevel === 'normal') riskLevel = 'watch';
-                recs.push({ level: 'warn', text: `สัดส่วนสุรา 70° ที่บ่มครบ 14 วันพร้อมปรุงมีเพียง ${readyRatio.toFixed(1)}% (${analytics.ready70.toLocaleString()} L) — ควรชะลอการเบิกเกินกำลังบ่ม` });
-            } else {
-                recs.push({ level: 'ok', text: `สุรา 70° พร้อมปรุงครบเกณฑ์บ่มอยู่ที่ ${readyRatio.toFixed(1)}% (${analytics.ready70.toLocaleString()} L) เพียงพอต่อแผนผลิต` });
-            }
+            recs.push({ level: 'warn', text: `1) นโยบายสต็อก ≥95%: อยู่ที่ ${analytics.utilizationPct}% (ต่ำกว่านโยบาย 95% อยู่ ${(95 - analytics.utilizationPct).toFixed(1)}%) — ต้องเร่งเติมสต็อกเพิ่มอีก ${shortfall95.toLocaleString()} L` });
         } else {
-            recs.push({ level: 'warn', text: 'ยังไม่มียอดสุรา 70° คงคลัง — แนะนำบันทึกยอดยกมาหรือรับกลั่น' });
+            riskLevel = 'critical';
+            recs.push({ level: 'critical', text: `1) นโยบายสต็อก ≥95%: ต่ำกว่าเกณฑ์นโยบายมาก (${analytics.utilizationPct}%) — ขาดจากเป้า 95% อีก ${shortfall95.toLocaleString()} L (โซน 70° ${shortfall70.toLocaleString()} L / โซน 40° ${shortfall40.toLocaleString()} L)` });
         }
 
+        // Topic 2: Zone Remaining Free Space & Working Volume 100% Balance (70° vs 40°)
+        recs.push({
+            level: (util70 < 95 || util40 < 95) ? 'warn' : 'info',
+            text: `2) พื้นที่ว่างคงเหลือรายโซน: โซน 70° ว่าง ${freeCap70.toLocaleString()} L (ใช้ไป ${util70.toFixed(1)}%) • โซน 40° ว่าง ${freeCap40.toLocaleString()} L (ใช้ไป ${util40.toFixed(1)}%) — จัดสรรเติมเข้าถังให้ครบเกณฑ์ ≥95% โดยไม่เกิน Working Volume 100%`
+        });
+
+        // Topic 3: Quality (QC) & 14-Day Maturation Readiness
         if (analytics.qcIssues > 0) {
             riskLevel = 'critical';
-            recs.push({ level: 'critical', text: `พบรายการสุราไม่ผ่านเกณฑ์ QC จำนวน ${analytics.qcIssues} รายการ (อัตราผ่าน ${analytics.qcPassRate}%) — ควรตรวจสอบและปรับปรุงคุณภาพก่อนปล่อยบรรจุ` });
-        } else if (analytics.qcTotal > 0) {
-            recs.push({ level: 'ok', text: `คุณภาพน้ำสุราผ่านมาตรฐาน QC 100% จาก ${analytics.qcTotal} รายการตรวจวัด` });
+            recs.push({ level: 'critical', text: `3) คุณภาพ QC & อายุบ่ม 14 วัน: พบไม่ผ่านเกณฑ์ QC ${analytics.qcIssues} รายการ (ผ่าน ${analytics.qcPassRate}%) — ต้องปรับปรุงคุณภาพก่อนบรรจุ ขณะที่ 70° บ่มครบ 14 วันอยู่ที่ ${analytics.ready70.toLocaleString()} L` });
+        } else {
+            const readyRatio = v70 > 0 ? (analytics.ready70 / v70) * 100 : 0;
+            if (v70 > 0 && readyRatio < 25 && riskLevel === 'normal') riskLevel = 'watch';
+            recs.push({
+                level: (v70 > 0 && readyRatio >= 25) ? 'ok' : 'warn',
+                text: `3) คุณภาพ QC & อายุบ่ม 14 วัน: ผล QC ผ่าน ${analytics.qcPassRate}% (${analytics.qcTotal} ครั้ง) • สุรา 70° บ่มครบพร้อมปรุง ${readyRatio.toFixed(1)}% (${analytics.ready70.toLocaleString()} L)`
+            });
         }
 
-        if (analytics.bondedCount > 0 || analytics.repairCount > 0) {
-            recs.push({ level: 'info', text: `มีถังติดทัณฑ์บน ${analytics.bondedCount} ถัง และอยู่ระหว่างซ่อมบำรุง ${analytics.repairCount} ถัง (หักออกจากความจุใช้งานจริงแล้ว)` });
-        }
+        // Topic 4 (New): 30-Day Inbound/Outbound Velocity & Replenishment Balance
+        const net30d = (analytics.in30d || 0) - (analytics.out30d || 0);
+        const velOk = analytics.utilizationPct >= 95 ? net30d >= -Math.round((analytics.totalCap || 0) * 0.03) : net30d > 0;
+        if (!velOk && analytics.utilizationPct < 95 && riskLevel === 'normal') riskLevel = 'watch';
+        recs.push({
+            level: velOk ? 'ok' : 'warn',
+            text: `4) ดุลการหมุนเวียน 30 วัน: รับเข้า ${analytics.in30d.toLocaleString()} L vs จ่ายออก ${analytics.out30d.toLocaleString()} L (สุทธิ ${net30d >= 0 ? '+' : ''}${net30d.toLocaleString()} L) — ${net30d < 0 && analytics.utilizationPct < 95 ? 'อัตราเบิกสูงกว่ารับ ทำให้สต็อกหลุดเกณฑ์ 95% ควรเพิ่มรอบรับกลั่น' : 'ความเร็วเติม-จ่ายสอดคล้องกับแผนคงสต็อก ≥95%'}`
+        });
 
-        if (analytics.daysLeft70 !== null && analytics.daysLeft70 < 14) {
-            riskLevel = 'critical';
-            recs.push({ level: 'critical', text: `สต็อก 70° คงเหลือใช้ได้ประมาณ ${analytics.daysLeft70} วัน ตามแผนใช้รายเดือน — ต่ำกว่า Safety Stock 14 วัน` });
-        }
+        // Topic 5 (New): Tank Fleet Utilization & Special Tank Impact
+        const availTanks = Math.max(0, (analytics.totalTanks || 0) - (analytics.bondedCount || 0) - (analytics.repairCount || 0));
+        const emptyTanks = Math.max(0, availTanks - (analytics.activeTankCount || 0));
+        recs.push({
+            level: (analytics.repairCount > 2 || analytics.bondedCount > 2) ? 'warn' : 'info',
+            text: `5) ประสิทธิภาพการใช้ถัง (Tank Fleet): ใช้งานอยู่ ${analytics.activeTankCount}/${availTanks} ถังพร้อมใช้ (ถังว่าง ${emptyTanks} ถัง • ทัณฑ์บน ${analytics.bondedCount} • ซ่อม ${analytics.repairCount}) — ${emptyTanks > 0 && analytics.utilizationPct < 95 ? `มีถังว่าง ${emptyTanks} ถังรองรับการเติมสต็อกให้ถึงเป้า 95%` : 'กระจายสต็อกเต็มกำลังถังที่มีประสิทธิภาพ'}`
+        });
+
+        // Topic 6 (New): Blending Continuity & 70° Buffer Coverage
+        const runRateText = analytics.daysLeft70 !== null
+            ? (analytics.daysLeft70 < 14
+                ? (riskLevel = 'critical', `สำรอง 70° อยู่ได้อีกเพียง ${analytics.daysLeft70} วัน (ต่ำกว่า Safety Stock 14 วัน) ต้องประสานส่งน้ำสุราด่วน`)
+                : `สำรอง 70° รองรับแผนปรุงได้ ${analytics.daysLeft70} วัน (สูงกว่า Safety Stock 14 วัน)`)
+            : 'ยังไม่ได้ตั้งค่าแผนใช้วัตถุดิบต่อเดือน แนะนำตั้งค่า Planning Data เพื่อคำนวณวันสำรองอัตโนมัติ';
+        recs.push({
+            level: (analytics.daysLeft70 !== null && analytics.daysLeft70 < 14) ? 'critical' : 'info',
+            text: `6) ความมั่นคงวัตถุดิบปรุง (70° Buffer): ${runRateText} และติดตามรอบ FIFO เก่าก่อนใหม่ลดความเสี่ยงอายุบ่มขาดช่วง`
+        });
 
         const headline = riskLevel === 'critical'
-            ? 'ต้องเฝ้าระวังและดำเนินการปรับสมดุลสต็อก/QC เร่งด่วน'
+            ? 'ต่ำกว่านโยบาย ≥95% หรือมีประเด็น QC/Buffer — ต้องเร่งเติมสต็อกและแก้ไขเร่งด่วน'
             : (riskLevel === 'watch'
-                ? 'สถานะคลังอยู่ในเกณฑ์ควรติดตามแผนบ่มและระดับสำรอง'
-                : 'สถานะคลังสุราและคุณภาพ QC อยู่ในเกณฑ์สมดุลดี');
+                ? 'อยู่ระหว่างติดตามให้เข้าเกณฑ์นโยบายคงโรง ≥95% และสมดุลรายโซน'
+                : 'ผ่านนโยบายสต็อกคงโรง ≥95% และคุณภาพ QC อยู่ในเกณฑ์ดีเยี่ยม');
 
         return { riskLevel, headline, recommendations: recs };
     }
@@ -1879,6 +1986,9 @@
             if (typeof window.updateQCAlertBadges === 'function') {
                 window.updateQCAlertBadges();
             }
+            if (typeof refreshQcPendingReminders === 'function') {
+                refreshQcPendingReminders();
+            }
         } catch (err) {
             console.warn('Page reload hook error:', err);
         }
@@ -1901,12 +2011,13 @@
         triggerHostPageReload();
         subscribeFactoryRealtime(factoryId);
         startPresenceHeartbeat();
+        subscribeUsersPresenceRealtime();
         if (session.role === 'admin') {
             subscribeAdminAuditLogsRealtime();
-            subscribeUsersPresenceRealtime();
         }
         renderAuthHeaderControls();
         refreshMobileShellData();
+        refreshQcPendingReminders();
 
         // First-Time Setup Check (Only prompt factory users when uninitialized; admin can click Setup if desired)
         if (!payload.initialized && session.role === 'factory') {
@@ -1970,6 +2081,7 @@
                     }
                     scheduleCloudSync();
                     refreshMobileShellData();
+                    refreshQcPendingReminders();
                     if (!isApplyingRollback && fId && beforeSnap) {
                         scheduleDiffLogForFactory(fId, beforeSnap);
                     }
@@ -2044,40 +2156,237 @@
     }
 
     // =========================================================================
-    // 8. FULLSCREEN & RESPONSIVE VIEWPORT CONTROLS
+    // 8. FULLSCREEN (iOS + SEAMLESS CROSS-PAGE) & DYNAMIC MODAL STACK MANAGER
     // =========================================================================
-    function toggleAppFullscreen() {
-        const doc = document;
-        const docEl = doc.documentElement;
-        const isFs = !!(doc.fullscreenElement || doc.webkitFullscreenElement || doc.msFullscreenElement);
-        try {
-            if (!isFs) {
-                if (docEl.requestFullscreen) docEl.requestFullscreen();
-                else if (docEl.webkitRequestFullscreen) docEl.webkitRequestFullscreen();
-                else if (docEl.msRequestFullscreen) docEl.msRequestFullscreen();
-            } else {
-                if (doc.exitFullscreen) doc.exitFullscreen();
-                else if (doc.webkitExitFullscreen) doc.webkitExitFullscreen();
-                else if (doc.msExitFullscreen) doc.msExitFullscreen();
+    let topModalZIndex = 8700;
+
+    function bringModalToFront(el) {
+        if (!el || !el.style) return;
+        topModalZIndex += 10;
+        el.style.zIndex = String(topModalZIndex);
+        // Keep SweetAlert2 containers above any dynamic modal
+        document.querySelectorAll('.swal2-container').forEach(sw => {
+            sw.style.zIndex = '999990';
+        });
+    }
+    window.bringModalToFront = bringModalToFront;
+
+    function installDynamicModalStackObserver() {
+        if (window.__stockmsModalStackObserverBound || typeof MutationObserver === 'undefined') return;
+        window.__stockmsModalStackObserverBound = true;
+        const obs = new MutationObserver((mutations) => {
+            for (const m of mutations) {
+                const target = m.target;
+                if (!target || target.nodeType !== 1) continue;
+                if (m.type === 'attributes' && m.attributeName === 'class') {
+                    const isModal = target.classList.contains('stockms-modal-backdrop')
+                        || (target.id && /Modal$/i.test(target.id))
+                        || target.classList.contains('kosmate-radial-overlay');
+                    if (isModal && !target.classList.contains('hidden')) {
+                        bringModalToFront(target);
+                    }
+                } else if (m.type === 'childList') {
+                    m.addedNodes.forEach(node => {
+                        if (node && node.nodeType === 1 && node.classList?.contains('swal2-container')) {
+                            node.style.zIndex = '999990';
+                        }
+                    });
+                }
             }
-        } catch (err) {
-            if (typeof Swal !== 'undefined') {
-                Swal.fire('ไม่สามารถขยายเต็มจอได้', 'เบราว์เซอร์นี้อาจจำกัดโหมดเต็มจอ กรุณากด F11', 'info');
-            }
+        });
+        obs.observe(document.body, {
+            attributes: true,
+            attributeFilter: ['class'],
+            subtree: true,
+            childList: true
+        });
+    }
+
+    function isImmersiveFullscreenActive() {
+        if (window.parent && window.parent !== window) {
+            try {
+                if (window.parent.document.documentElement.classList.contains('stockms-immersive-fs')) return true;
+                if (window.parent.document.fullscreenElement || window.parent.document.webkitFullscreenElement) return true;
+            } catch (e) { }
         }
+        const doc = document;
+        const nativeFs = !!(doc.fullscreenElement || doc.webkitFullscreenElement || doc.msFullscreenElement);
+        let pref = false;
+        try { pref = localStorage.getItem(FULLSCREEN_PREF_KEY) === '1'; } catch (e) { }
+        return nativeFs || pref || document.documentElement.classList.contains('stockms-immersive-fs');
+    }
+
+    function applyImmersiveFullscreenClasses(enabled) {
+        document.documentElement.classList.toggle('stockms-immersive-fs', !!enabled);
+        document.body.classList.toggle('stockms-immersive-fs', !!enabled);
+        try {
+            localStorage.setItem(FULLSCREEN_PREF_KEY, enabled ? '1' : '0');
+        } catch (e) { }
+        if (enabled && /iPhone|iPad|iPod/i.test(navigator.userAgent || '')) {
+            setTimeout(() => { try { window.scrollTo(0, 1); } catch (e) { } }, 60);
+        }
+        updateFullscreenButtonState();
+    }
+
+    async function requestNativeFullscreenSafe(targetDocEl) {
+        const el = targetDocEl || document.documentElement;
+        try {
+            if (el.requestFullscreen) { await el.requestFullscreen(); return true; }
+            if (el.webkitRequestFullscreen) { el.webkitRequestFullscreen(); return true; }
+            if (el.msRequestFullscreen) { el.msRequestFullscreen(); return true; }
+        } catch (e) { }
+        return false;
+    }
+
+    async function exitNativeFullscreenSafe(targetDoc) {
+        const d = targetDoc || document;
+        try {
+            if (d.exitFullscreen) { await d.exitFullscreen(); return true; }
+            if (d.webkitExitFullscreen) { d.webkitExitFullscreen(); return true; }
+            if (d.msExitFullscreen) { d.msExitFullscreen(); return true; }
+        } catch (e) { }
+        return false;
+    }
+
+    async function toggleAppFullscreen() {
+        if (window.parent && window.parent !== window && typeof window.parent.toggleAppFullscreen === 'function') {
+            return window.parent.toggleAppFullscreen();
+        }
+        const currentlyActive = isImmersiveFullscreenActive();
+        if (!currentlyActive) {
+            applyImmersiveFullscreenClasses(true);
+            const enteredNative = await requestNativeFullscreenSafe(document.documentElement);
+            if (!enteredNative && typeof Swal !== 'undefined') {
+                Swal.fire({
+                    toast: true,
+                    position: 'top',
+                    icon: 'success',
+                    title: 'เปิดโหมดเต็มหน้าจอแล้ว (หากใช้ iPhone แนะนำกด Share > Add to Home Screen เพื่อซ่อนแถบ Safari ถาวร)',
+                    showConfirmButton: false,
+                    timer: 2600
+                });
+            }
+        } else {
+            applyImmersiveFullscreenClasses(false);
+            await exitNativeFullscreenSafe(document);
+        }
+        updateFullscreenButtonState();
     }
     window.toggleAppFullscreen = toggleAppFullscreen;
 
-    document.addEventListener('fullscreenchange', updateFullscreenButtonState);
-    document.addEventListener('webkitfullscreenchange', updateFullscreenButtonState);
+    function handleNativeFullscreenChange() {
+        const doc = document;
+        const nativeFs = !!(doc.fullscreenElement || doc.webkitFullscreenElement || doc.msFullscreenElement);
+        if (!nativeFs && window.__stockmsWasNativeFs) {
+            applyImmersiveFullscreenClasses(false);
+        }
+        window.__stockmsWasNativeFs = nativeFs;
+        updateFullscreenButtonState();
+    }
+    document.addEventListener('fullscreenchange', handleNativeFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleNativeFullscreenChange);
 
     function updateFullscreenButtonState() {
-        const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+        const isFs = isImmersiveFullscreenActive();
         document.querySelectorAll('.stockms-fs-icon').forEach(icon => {
             icon.className = `fas ${isFs ? 'fa-compress' : 'fa-expand'} stockms-fs-icon`;
         });
         document.querySelectorAll('.stockms-fs-label').forEach(lbl => {
             lbl.textContent = isFs ? 'ย่อจอ' : 'เต็มจอ';
+        });
+    }
+
+    function restorePersistentFullscreen() {
+        let pref = false;
+        try { pref = localStorage.getItem(FULLSCREEN_PREF_KEY) === '1'; } catch (e) { }
+        if (!pref) {
+            updateFullscreenButtonState();
+            return;
+        }
+        applyImmersiveFullscreenClasses(true);
+        // Also try re-acquiring native Fullscreen API silently on next user interaction if browser exited it on reload
+        if (window === window.top && !document.fullscreenElement && !document.webkitFullscreenElement) {
+            const tryReacquire = async () => {
+                if (localStorage.getItem(FULLSCREEN_PREF_KEY) === '1' && !document.fullscreenElement && !document.webkitFullscreenElement) {
+                    await requestNativeFullscreenSafe(document.documentElement);
+                    updateFullscreenButtonState();
+                }
+            };
+            ['pointerdown', 'keydown'].forEach(evt => {
+                window.addEventListener(evt, tryReacquire, { once: true, capture: true, passive: true });
+            });
+        }
+    }
+
+    function navigateSeamlessly(targetUrl) {
+        if (!targetUrl) return;
+        let resolved;
+        try {
+            resolved = new URL(targetUrl, window.location.href);
+        } catch (e) {
+            window.location.href = targetUrl;
+            return;
+        }
+        if (resolved.origin !== window.location.origin) {
+            window.location.href = targetUrl;
+            return;
+        }
+
+        // Inside child host frame -> ask top host frame to switch or close seamlessly!
+        if (window.parent && window.parent !== window && typeof window.parent.StockMSUI?.handleSeamlessHostNav === 'function') {
+            window.parent.StockMSUI.handleSeamlessHostNav(resolved.pathname + resolved.search + resolved.hash);
+            return;
+        }
+
+        // Top window: if fullscreen is active and navigating to the sibling page, host it in #stockmsSeamlessHostFrame so fullscreen NEVER breaks!
+        if (isImmersiveFullscreenActive()) {
+            handleSeamlessHostNav(resolved.pathname + resolved.search + resolved.hash);
+            return;
+        }
+
+        window.location.href = resolved.pathname + resolved.search + resolved.hash;
+    }
+
+    function handleSeamlessHostNav(relUrl) {
+        let resolved;
+        try { resolved = new URL(relUrl, window.location.href); } catch (e) { window.location.href = relUrl; return; }
+        const curFile = (window.location.pathname.split('/').pop() || 'index.html').toLowerCase();
+        const dstFile = (resolved.pathname.split('/').pop() || 'index.html').toLowerCase();
+        const frame = document.getElementById('stockmsSeamlessHostFrame');
+
+        // If returning to the exact top-level page without extra query/hash, reveal top window & refresh
+        if (frame && dstFile === curFile && !resolved.search && !resolved.hash) {
+            frame.classList.add('hidden');
+            try { frame.src = 'about:blank'; } catch (e) { }
+            triggerHostPageReload();
+            refreshMobileShellData();
+            refreshQcPendingReminders();
+            return;
+        }
+
+        if (frame) {
+            frame.src = resolved.pathname + resolved.search + resolved.hash;
+            frame.classList.remove('hidden');
+            frame.style.zIndex = '9400';
+            return;
+        }
+        window.location.href = resolved.pathname + resolved.search + resolved.hash;
+    }
+
+    function installSeamlessLinkInterceptor() {
+        if (window.__stockmsLinkInterceptorBound) return;
+        window.__stockmsLinkInterceptorBound = true;
+        document.addEventListener('click', (e) => {
+            const anchor = e.target?.closest?.('a[href]');
+            if (!anchor) return;
+            const href = anchor.getAttribute('href') || '';
+            if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
+            if (/^(index\.html|dashboard\.html)/i.test(href.split('/').pop().split('?')[0].split('#')[0])) {
+                if (isImmersiveFullscreenActive() || (window.parent && window.parent !== window)) {
+                    e.preventDefault();
+                    navigateSeamlessly(href);
+                }
+            }
         });
     }
 
@@ -2248,7 +2557,8 @@
             try { await fbAuth.signOut(); } catch (e) { }
         }
         ['firstTimeSetupModal', 'changePasswordModal', 'adminUserManagerModal', 'adminCompareModal',
-            'adminAuditLogsModal', 'reconcileModal', 'dailyReportModal', 'stockLayoutModal',
+            'adminAuditLogsModal', 'onlineUsersModal', 'qcPendingReminderModal', 'stockmsSeamlessHostFrame',
+            'reconcileModal', 'dailyReportModal', 'stockLayoutModal',
             'masterSetupModal', 'auditReportModal', 'qcAnomalyModal'].forEach(id => {
                 document.getElementById(id)?.classList.add('hidden');
             });
@@ -2418,6 +2728,150 @@
         await renderAuthHeaderControls();
     }
 
+    async function adminUpdateExistingUser({ originalUsernameRaw, usernameRaw, displayName, password, role }) {
+        const session = getSession();
+        if (!session || session.role !== 'admin') {
+            throw new Error('สิทธิ์เฉพาะ Admin เท่านั้น');
+        }
+        const origUsername = parseUsername(originalUsernameRaw);
+        const newUsername = parseUsername(usernameRaw);
+        if (!origUsername || !newUsername) {
+            throw new Error('Username ต้องเป็นตัวอักษรภาษาอังกฤษ ตัวเลข หรือขีด (-) เท่านั้น');
+        }
+        const reg = getLocalUsersRegistry();
+        const existing = reg[origUsername];
+        if (!existing) throw new Error(`ไม่พบบัญชี "${origUsername}" ในระบบ`);
+
+        if (origUsername === 'admin' && newUsername !== 'admin') {
+            throw new Error('บัญชีผู้ดูแลหลัก "admin" ไม่สามารถเปลี่ยน Username ได้');
+        }
+        if (origUsername === 'admin' && role !== 'admin') {
+            throw new Error('บัญชีผู้ดูแลหลัก "admin" ต้องมีสิทธิ์เป็น Admin เท่านั้น');
+        }
+        if (newUsername !== origUsername && reg[newUsername]) {
+            throw new Error(`Username "${newUsername}" ถูกใช้งานแล้ว กรุณาใช้ชื่ออื่น`);
+        }
+        if (password && password.length < 4) {
+            throw new Error('รหัสผ่านต้องมีอย่างน้อย 4 ตัวอักษร');
+        }
+
+        const nowIso = new Date().toISOString();
+        const isRename = newUsername !== origUsername;
+        const effectiveRole = (newUsername === 'admin') ? 'admin' : (role === 'admin' ? 'admin' : 'factory');
+        const effectiveDisplay = (displayName || existing.displayName || newUsername).trim();
+
+        let nextSalt = existing.salt;
+        let nextHash = existing.passwordHash;
+        let nextVer = isRename ? 1 : (Number(existing.authVersion) || 1);
+        let nextAuthEmail = existing.authEmail || buildAuthEmail(newUsername, nextVer);
+        let assignedUid = existing.authUid || '';
+
+        if (password && password.length >= 4) {
+            nextVer = isRename ? 1 : ((Number(existing.authVersion) || 1) + 1);
+            nextSalt = generateSalt(newUsername);
+            nextHash = hashPasswordWithSalt(password, nextSalt);
+            nextAuthEmail = buildAuthEmail(newUsername, nextVer);
+            try {
+                const secAuth = getSecondaryAuth();
+                if (secAuth) {
+                    const cred = await secAuth.createUserWithEmailAndPassword(nextAuthEmail, deriveFirebaseAuthSecret(newUsername, password));
+                    assignedUid = cred.user.uid;
+                    await secAuth.signOut();
+                }
+            } catch (e) {
+                console.info('Secondary Firebase Auth update note:', e.code || e.message);
+            }
+        } else if (isRename) {
+            throw new Error('เมื่อเปลี่ยน Username กรุณากรอกรหัสผ่านใหม่ (อย่างน้อย 4 ตัวอักษร) เพื่อสร้างรหัสยืนยันบัญชีใหม่');
+        }
+
+        const updatedDoc = {
+            username: newUsername,
+            displayName: effectiveDisplay,
+            role: effectiveRole,
+            salt: nextSalt,
+            passwordHash: nextHash,
+            authVersion: nextVer,
+            authEmail: nextAuthEmail,
+            authUid: assignedUid,
+            active: existing.active !== false,
+            createdAt: existing.createdAt || nowIso,
+            updatedAt: nowIso,
+            createdBy: existing.createdBy || session.username
+        };
+
+        if (isRename) {
+            // Migrate local tenant payload
+            const oldPayload = readTenantLocalPayload(origUsername);
+            oldPayload.username = newUsername;
+            oldPayload.factoryName = effectiveDisplay;
+            writeTenantLocalPayload(newUsername, oldPayload);
+            try { localStorage.removeItem(`${TENANT_PREFIX}${origUsername}::__meta`); } catch (e) { }
+            TENANT_KEYS.forEach(k => { try { localStorage.removeItem(`${TENANT_PREFIX}${origUsername}::${k}`); } catch (e) { } });
+            delete reg[origUsername];
+        }
+        reg[newUsername] = updatedDoc;
+        saveLocalUsersRegistry(reg);
+
+        // Migrate cloud Firestore docs if connected
+        if (fbDb && fbAuth?.currentUser) {
+            try {
+                await fbDb.collection('users').doc(newUsername).set(updatedDoc, { merge: true });
+                if (effectiveRole === 'factory') {
+                    if (isRename) {
+                        const oldFRef = fbDb.collection('factories').doc(origUsername);
+                        const oldFSnap = await oldFRef.get();
+                        const newFRef = fbDb.collection('factories').doc(newUsername);
+                        const baseData = oldFSnap.exists ? oldFSnap.data() : {};
+                        await newFRef.set({
+                            ...baseData,
+                            username: newUsername,
+                            factoryName: effectiveDisplay,
+                            updatedAt: nowIso,
+                            updatedBy: session.username
+                        }, { merge: true });
+                        if (oldFSnap.exists) {
+                            const oldChunks = await oldFRef.collection('chunks').get();
+                            for (const cDoc of oldChunks.docs) {
+                                await newFRef.collection('chunks').doc(cDoc.id).set(cDoc.data());
+                            }
+                            await oldFRef.delete();
+                        }
+                    } else {
+                        await fbDb.collection('factories').doc(newUsername).set({
+                            factoryName: effectiveDisplay,
+                            updatedAt: nowIso,
+                            updatedBy: session.username
+                        }, { merge: true });
+                    }
+                }
+                if (isRename) {
+                    try { await fbDb.collection('users').doc(origUsername).delete(); } catch (e) { }
+                    try { await fbDb.collection('presence').doc(origUsername).delete(); } catch (e) { }
+                }
+            } catch (e) {
+                console.info('Cloud user edit sync note:', e.code || e.message);
+            }
+        }
+
+        // If currently viewing the renamed factory, switch session factory pointer cleanly
+        if (isRename && getActiveFactoryId() === origUsername) {
+            session.activeFactory = newUsername;
+            localStorage.setItem('stockms_admin_last_factory', newUsername);
+            saveSession(session, !!localStorage.getItem(SESSION_STORAGE_KEY));
+            await activateWorkspace(newUsername);
+        }
+
+        await writeAuditLog('ADMIN_EDIT_USER', newUsername, {
+            category: 'auth',
+            actionLabel: 'Admin แก้ไขข้อมูลผู้ใช้งาน',
+            summaryText: `แก้ไขบัญชี ${isRename ? `${origUsername} -> ${newUsername}` : newUsername} (${effectiveDisplay}, Role: ${effectiveRole}${password ? ', อัปเดตรหัสผ่าน' : ''})`,
+            canRollback: false
+        });
+        await renderAuthHeaderControls();
+        return updatedDoc;
+    }
+
     async function loadAllUsersList() {
         const reg = getLocalUsersRegistry();
         if (fbDb && fbAuth?.currentUser) {
@@ -2506,6 +2960,7 @@
         logout: performLogout,
         changeOwnPassword,
         adminCreateOrResetUser,
+        adminUpdateExistingUser,
         verifyCurrentOrAdminPassword,
         switchAdminFactory: async function (targetFactoryId) {
             const s = getSession();
@@ -2750,7 +3205,13 @@
             <button type="button" onclick="window.StockMSUI.closeModal('adminUserManagerModal')" class="w-9 h-9 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"><i class="fas fa-times"></i></button>
         </div>
 
+        <div id="adminEditModeBanner" class="hidden mb-2.5 px-3.5 py-2 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex flex-wrap items-center justify-between gap-2">
+            <span class="font-extrabold flex items-center gap-1.5"><i class="fas fa-user-edit text-amber-600"></i> โหมดแก้ไขข้อมูลผู้ใช้เดิม: <b id="adminEditBannerTarget">-</b></span>
+            <button type="button" id="adminCancelEditBtn" onclick="window.StockMSUI.cancelAdminEditUser()" class="px-2.5 py-1 rounded-lg bg-white hover:bg-amber-100 border border-amber-300 text-amber-800 font-bold text-[11px]">ยกเลิกการแก้ไข</button>
+        </div>
+
         <form id="adminAddUserForm" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 mb-5">
+            <input type="hidden" id="adminEditOriginalUsername" value="">
             <div>
                 <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Username *</label>
                 <input type="text" id="adminNewUsername" required placeholder="เช่น ms-nkp" class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs font-bold">
@@ -2760,7 +3221,7 @@
                 <input type="text" id="adminNewDisplayName" required placeholder="เช่น โรงงาน MS-NKP" class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs font-bold">
             </div>
             <div>
-                <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">รหัสผ่านเริ่มต้น *</label>
+                <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1" id="adminNewPasswordLabel">รหัสผ่านเริ่มต้น *</label>
                 <input type="text" id="adminNewPassword" required minlength="4" placeholder="ตั้งรหัสผ่าน" class="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs font-bold">
             </div>
             <div>
@@ -2771,8 +3232,8 @@
                 </select>
             </div>
             <div class="flex items-end">
-                <button type="submit" class="w-full py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold shadow flex items-center justify-center gap-1.5">
-                    <i class="fas fa-user-plus"></i> เพิ่มผู้ใช้งาน
+                <button type="submit" id="adminUserFormSubmitBtn" class="w-full py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold shadow flex items-center justify-center gap-1.5">
+                    <i class="fas fa-user-plus"></i> <span>เพิ่มผู้ใช้งาน</span>
                 </button>
             </div>
         </form>
@@ -2812,19 +3273,21 @@
             </div>
         </div>
 
-        <div id="adminCompareOverview" class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5"></div>
+        <div id="adminCompareOverview" class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mb-4 sm:mb-5"></div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-5">
-            <div class="lg:col-span-7 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700">
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-4 mb-5">
+            <div class="xl:col-span-7 stockms-compare-table-scroll rounded-2xl border border-slate-200 dark:border-slate-700 bg-white">
                 <table class="w-full text-xs text-left">
                     <thead class="bg-slate-100 dark:bg-slate-800 text-[10px] font-bold uppercase text-slate-600 dark:text-slate-300">
                         <tr>
                             <th class="px-3 py-2.5">โรงงาน / User</th>
                             <th class="px-3 py-2.5 text-right">คงคลังรวม (L)</th>
                             <th class="px-3 py-2.5 text-right">ความจุ (L)</th>
-                            <th class="px-3 py-2.5 text-right">% ใช้พื้นที่</th>
-                            <th class="px-3 py-2.5 text-right">70° (L)</th>
-                            <th class="px-3 py-2.5 text-right">40° &amp; อื่นๆ (L)</th>
+                            <th class="px-3 py-2.5 text-right">% คงโรง (≥95%)</th>
+                            <th class="px-3 py-2.5 text-right text-emerald-700">70° คงคลัง</th>
+                            <th class="px-3 py-2.5 text-right text-emerald-700">พื้นที่ว่าง 70° (L)</th>
+                            <th class="px-3 py-2.5 text-right text-blue-700">40° คงคลัง</th>
+                            <th class="px-3 py-2.5 text-right text-blue-700">พื้นที่ว่าง 40° (L)</th>
                             <th class="px-3 py-2.5 text-center">QC ผ่าน</th>
                             <th class="px-3 py-2.5 text-center">เปิดดู</th>
                         </tr>
@@ -2832,16 +3295,20 @@
                     <tbody id="adminCompareTableBody" class="divide-y divide-slate-100 dark:divide-slate-800"></tbody>
                 </table>
             </div>
-            <div class="lg:col-span-5 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40">
-                <div class="text-xs font-extrabold mb-2 text-slate-700 dark:text-slate-200"><i class="fas fa-chart-bar text-blue-600 mr-1.5"></i> กราฟเปรียบเทียบปริมาณสุรารายโรงงาน</div>
-                <div class="h-56 relative"><canvas id="adminCompareBarCanvas"></canvas></div>
+            <div class="xl:col-span-5 p-3.5 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40">
+                <div class="text-xs font-extrabold mb-1 text-slate-700 dark:text-slate-200 flex items-center justify-between gap-2 flex-wrap">
+                    <span><i class="fas fa-chart-bar text-blue-600 mr-1.5"></i> ปริมาณสุรารายโรงงาน vs ลิมิต Working Volume 100%</span>
+                    <span class="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">เส้นขีดบน = 100% WV</span>
+                </div>
+                <div class="h-64 sm:h-72 relative"><canvas id="adminCompareBarCanvas"></canvas></div>
             </div>
         </div>
 
-        <div class="mb-2 text-sm font-extrabold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <i class="fas fa-lightbulb text-amber-500"></i> บทสรุปวิเคราะห์และคำแนะนำรายโรงงาน (Executive Insights)
+        <div class="mb-2.5 text-xs sm:text-sm font-extrabold text-slate-800 dark:text-slate-100 flex flex-wrap items-center justify-between gap-2">
+            <span class="flex items-center gap-2"><i class="fas fa-lightbulb text-amber-500"></i> บทสรุปวิเคราะห์และคำแนะนำรายโรงงาน (Executive Insights)</span>
+            <span class="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">นโยบายบริษัท: สต็อกคงโรงไม่ต่ำกว่า 95%</span>
         </div>
-        <div id="adminFactoryInsightsGrid" class="grid grid-cols-1 md:grid-cols-2 gap-3.5"></div>
+        <div id="adminFactoryInsightsGrid" class="grid grid-cols-1 lg:grid-cols-2 gap-3.5"></div>
     </div>
 </div>
 
@@ -2927,6 +3394,58 @@
     </div>
 </div>
 
+<!-- 5C. ALL-USERS ONLINE PRESENCE MODAL -->
+<div id="onlineUsersModal" class="stockms-modal-backdrop hidden">
+    <div class="stockms-modal-card max-w-lg p-5">
+        <div class="flex justify-between items-center mb-3.5 pb-3 border-b border-slate-200">
+            <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow"><i class="fas fa-signal"></i></div>
+                <div>
+                    <h3 class="text-sm sm:text-base font-extrabold">ผู้ใช้งานที่กำลังออนไลน์ในระบบ</h3>
+                    <p class="text-[11px] text-slate-500">อัปเดตสถานะแบบ Real-Time ทุก 25 วินาที</p>
+                </div>
+            </div>
+            <button type="button" onclick="window.StockMSUI.closeModal('onlineUsersModal')" class="w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="onlineUsersModalBody" class="space-y-2 max-h-[60vh] overflow-y-auto text-xs"></div>
+    </div>
+</div>
+
+<!-- 5D. 24-HOUR QC REMINDER MODAL (TANK >= 95% REPRESENTATIVE SAMPLE) -->
+<div id="qcPendingReminderModal" class="stockms-modal-backdrop hidden">
+    <div class="stockms-modal-card max-w-3xl p-4 sm:p-6">
+        <div class="flex justify-between items-center mb-3.5 pb-3 border-b border-slate-200 gap-2">
+            <div class="flex items-center gap-2.5">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-rose-600 text-white flex items-center justify-center text-lg shadow"><i class="fas fa-vials"></i></div>
+                <div>
+                    <h3 class="text-sm sm:text-base font-extrabold text-slate-800">แจ้งเตือนกรอกผลวิเคราะห์ QC ตัวแทนถัง (≥95% ครบ 24 ชม.)</h3>
+                    <p class="text-[11px] text-slate-500">รายการรับปรุง/รับกลั่นที่ปริมาตรถังเกิน 95% เกิน 24 ชั่วโมงแล้ว แต่ยังไม่ได้กรอกผลตรวจจากห้อง Lab</p>
+                </div>
+            </div>
+            <button type="button" onclick="window.StockMSUI.closeModal('qcPendingReminderModal')" class="w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400 flex-shrink-0"><i class="fas fa-times"></i></button>
+        </div>
+
+        <div id="qcPendingSummaryRow" class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-3.5"></div>
+
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div class="flex flex-wrap gap-1.5">
+                <button type="button" id="qcRemTabOverdue" onclick="window.StockMSUI.switchPendingQcTab('overdue')" class="px-3 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-extrabold shadow-xs">เกิน 24 ชม. (แจ้งเตือน)</button>
+                <button type="button" id="qcRemTabWaiting" onclick="window.StockMSUI.switchPendingQcTab('waiting')" class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold">รอผล Lab (&lt; 24 ชม.)</button>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+                <button type="button" onclick="window.StockMSUI.setPendingQcCatFilter('ALL')" data-qcrem-cat="ALL" class="px-2.5 py-1 rounded-lg bg-slate-800 text-white text-[11px] font-bold">ทุกประเภท</button>
+                <button type="button" onclick="window.StockMSUI.setPendingQcCatFilter('BLEND')" data-qcrem-cat="BLEND" class="px-2.5 py-1 rounded-lg bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200 text-[11px] font-bold">ถังปรุงสุรา</button>
+                <button type="button" onclick="window.StockMSUI.setPendingQcCatFilter('HIGH_70')" data-qcrem-cat="HIGH_70" class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold">ถังเก็บบ่ม 70°</button>
+            </div>
+        </div>
+
+        <div id="qcPendingListBody" class="space-y-2.5 max-h-[54vh] overflow-y-auto pr-1 text-xs"></div>
+    </div>
+</div>
+
+<!-- SEAMLESS CROSS-PAGE FULLSCREEN HOST FRAME -->
+<iframe id="stockmsSeamlessHostFrame" class="hidden" title="StockMS Seamless View"></iframe>
+
 <!-- 6. KOSMATE MOBILE APP SHELL (Beranda, Bottom Nav & Profil View) -->
 <div id="kosmateMobileShell" class="hidden">
     <div class="kosmate-shell-wrap">
@@ -2940,6 +3459,10 @@
                 </p>
             </div>
             <div class="flex items-center gap-1.5">
+                <button type="button" id="kmBtnPendingQcReminder" onclick="window.StockMSUI.openQcPendingReminderModal()" class="kosmate-icon-btn stockms-qc-alert-btn" title="แจ้งเตือนกรอกผล QC ถัง ≥95% (เกิน 24 ชม.)">
+                    <span id="kmPendingQcBadge" class="stockms-qc-alert-badge hidden bg-rose-600 text-white mr-0.5 text-[9px] min-w-[16px] h-[16px] px-1">0</span>
+                    <i class="fas fa-flask text-amber-600"></i>
+                </button>
                 <button type="button" onclick="toggleAppFullscreen()" class="kosmate-icon-btn" title="ขยายเต็มหน้าจอ">
                     <i class="fas fa-expand stockms-fs-icon"></i>
                 </button>
@@ -3003,6 +3526,15 @@
 
             <!-- 8-Icon Quick Actions Grid (4x2 KosMate Squircle Style) -->
             <div class="kosmate-quick-grid" id="kmQuickGrid"></div>
+
+            <!-- Live Online Users Strip (Visible to ALL logged-in users) -->
+            <div id="kmOnlineUsersStrip" onclick="window.StockMSUI.openOnlinePresenceAction()" class="p-2.5 rounded-2xl bg-white/90 border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-2 cursor-pointer text-xs">
+                <div class="flex items-center gap-1.5 font-extrabold text-emerald-700 whitespace-nowrap">
+                    <span class="stockms-live-dot"></span>
+                    <span>ผู้ใช้งานออนไลน์ (<b id="kmOnlineCount">0</b>):</span>
+                </div>
+                <div id="kmOnlineUsersPills" class="flex flex-wrap items-center gap-1"></div>
+            </div>
 
             <!-- Dense 4-Column Live Tank Matrix (See More Tanks & Live Data on Mobile) -->
             <div id="kmTankMatrixSection" class="kosmate-recent-card">
@@ -3209,12 +3741,18 @@
                         <select id="navAdminFactorySelect" class="px-2 py-1 rounded-xl border border-indigo-300/70 bg-white text-xs font-extrabold text-indigo-700 outline-none cursor-pointer"></select>
                     </div>
 
-                    <div id="navAdminOnlineUsersWrap" class="hidden stockms-nav-group items-center gap-1.5 cursor-pointer" onclick="window.StockMSUI.openAdminUserModal()" title="คลิกเพื่อจัดการผู้ใช้และดูสถานะออนไลน์ทั้งหมด">
+                    <div id="navAdminOnlineUsersWrap" class="hidden stockms-nav-group items-center gap-1.5 cursor-pointer" onclick="window.StockMSUI.openOnlinePresenceAction()" title="คลิกเพื่อดูผู้ใช้งานออนไลน์ทั้งหมด">
                         <span class="text-[10px] font-extrabold text-emerald-700 flex items-center gap-1 whitespace-nowrap">
                             <span class="stockms-live-dot"></span> ออนไลน์ <b id="navAdminOnlineCount">0</b>:
                         </span>
                         <div id="navAdminOnlineUsersList" class="flex flex-wrap items-center gap-1"></div>
                     </div>
+
+                    <button type="button" id="navBtnPendingQcReminder" onclick="window.StockMSUI.openQcPendingReminderModal()" class="hidden btn-glass stockms-qc-alert-btn px-2.5 py-1 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300/90 font-bold text-[11px] items-center gap-1.5 whitespace-nowrap" title="แจ้งเตือนกรอกผลวิเคราะห์ถัง ≥95% (เกิน 24 ชั่วโมง)">
+                        <span id="navPendingQcBadge" class="stockms-qc-alert-badge hidden bg-rose-600 text-white">0</span>
+                        <i class="fas fa-flask text-rose-500"></i>
+                        <span>รอผลวิเคราะห์ (≥95%)</span>
+                    </button>
                 </div>
 
                 <div class="flex flex-wrap items-center gap-1.5">
@@ -3443,20 +3981,34 @@
             });
         }
 
-        // Admin add user form
+        // Admin add or edit user form
         const addUserForm = document.getElementById('adminAddUserForm');
         if (addUserForm) {
             addUserForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 try {
+                    const origUsername = document.getElementById('adminEditOriginalUsername')?.value || '';
                     const usernameRaw = document.getElementById('adminNewUsername').value;
                     const displayName = document.getElementById('adminNewDisplayName').value;
                     const password = document.getElementById('adminNewPassword').value;
                     const role = document.getElementById('adminNewRole').value;
-                    await adminCreateOrResetUser({ usernameRaw, displayName, password, role, isEdit: false });
-                    addUserForm.reset();
-                    await renderAdminUsersTable();
-                    if (typeof Swal !== 'undefined') Swal.fire('เพิ่มผู้ใช้งานสำเร็จ!', `สร้างบัญชี ${parseUsername(usernameRaw)} เรียบร้อยแล้ว`, 'success');
+                    if (origUsername) {
+                        await adminUpdateExistingUser({
+                            originalUsernameRaw: origUsername,
+                            usernameRaw,
+                            displayName,
+                            password,
+                            role
+                        });
+                        cancelAdminEditUser();
+                        await renderAdminUsersTable();
+                        if (typeof Swal !== 'undefined') Swal.fire('อัปเดตสำเร็จ!', `แก้ไขข้อมูลบัญชี ${parseUsername(usernameRaw)} เรียบร้อยแล้ว`, 'success');
+                    } else {
+                        await adminCreateOrResetUser({ usernameRaw, displayName, password, role, isEdit: false });
+                        addUserForm.reset();
+                        await renderAdminUsersTable();
+                        if (typeof Swal !== 'undefined') Swal.fire('เพิ่มผู้ใช้งานสำเร็จ!', `สร้างบัญชี ${parseUsername(usernameRaw)} เรียบร้อยแล้ว`, 'success');
+                    }
                 } catch (err) {
                     if (typeof Swal !== 'undefined') Swal.fire('เกิดข้อผิดพลาด', err.message, 'error');
                 }
@@ -3534,7 +4086,10 @@
                 <td class="px-3.5 py-2.5">${presenceHtml}</td>
                 <td class="px-3.5 py-2.5 text-[11px] text-slate-400">${u.updatedAt ? escapeHtml(u.updatedAt.slice(0, 16).replace('T', ' ')) : '-'}</td>
                 <td class="px-3.5 py-2.5 text-center">
-                    <div class="flex items-center justify-center gap-1.5">
+                    <div class="flex items-center justify-center gap-1.5 flex-wrap">
+                        <button type="button" onclick="window.StockMSUI.openAdminEditUser('${escapeHtml(u.username)}')" class="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-[11px]">
+                            <i class="fas fa-user-edit mr-1"></i> แก้ไขข้อมูล
+                        </button>
                         <button type="button" onclick="window.StockMSUI.promptAdminResetPwd('${escapeHtml(u.username)}')" class="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-bold text-[11px]">
                             <i class="fas fa-key mr-1"></i> ตั้งรหัสผ่านใหม่
                         </button>
@@ -3544,6 +4099,79 @@
             </tr>
         `;
         }).join('');
+    }
+
+    async function openAdminEditUser(username) {
+        const users = await loadAllUsersList();
+        const u = users.find(x => x.username === username);
+        if (!u) return;
+
+        const origEl = document.getElementById('adminEditOriginalUsername');
+        const userEl = document.getElementById('adminNewUsername');
+        const dispEl = document.getElementById('adminNewDisplayName');
+        const pwdEl = document.getElementById('adminNewPassword');
+        const pwdLbl = document.getElementById('adminNewPasswordLabel');
+        const roleEl = document.getElementById('adminNewRole');
+        const banner = document.getElementById('adminEditModeBanner');
+        const bannerTarget = document.getElementById('adminEditBannerTarget');
+        const submitBtn = document.getElementById('adminUserFormSubmitBtn');
+
+        if (origEl) origEl.value = u.username;
+        if (userEl) {
+            userEl.value = u.username;
+            userEl.readOnly = (u.username === 'admin');
+            userEl.classList.toggle('bg-slate-100', u.username === 'admin');
+        }
+        if (dispEl) dispEl.value = u.displayName || u.username;
+        if (roleEl) {
+            roleEl.value = u.role || 'factory';
+            roleEl.disabled = (u.username === 'admin');
+        }
+
+        // Pre-fill known seed password only if stored hash still matches initial seed
+        const seedSpec = SEED_USERS_SPEC.find(sp => sp.username === u.username);
+        const matchesSeed = !!(seedSpec && u.salt && hashPasswordWithSalt(seedSpec.plain, u.salt) === u.passwordHash);
+        if (pwdEl) {
+            pwdEl.required = false;
+            pwdEl.value = matchesSeed ? seedSpec.plain : '';
+            pwdEl.placeholder = matchesSeed ? 'แก้ไขหรือใช้รหัสเริ่มต้นนี้' : 'กรอกรหัสผ่านใหม่ (เว้นว่าง = คงเดิม)';
+        }
+        if (pwdLbl) pwdLbl.textContent = 'รหัสผ่าน (แก้หรือเว้นว่าง)';
+        if (banner) banner.classList.remove('hidden');
+        if (bannerTarget) bannerTarget.textContent = `${u.username} (${u.displayName || u.username})`;
+        if (submitBtn) {
+            submitBtn.className = 'w-full py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-extrabold shadow flex items-center justify-center gap-1.5';
+            submitBtn.innerHTML = '<i class="fas fa-save"></i> <span>บันทึกการแก้ไข</span>';
+        }
+        userEl?.focus();
+    }
+
+    function cancelAdminEditUser() {
+        const origEl = document.getElementById('adminEditOriginalUsername');
+        const userEl = document.getElementById('adminNewUsername');
+        const pwdEl = document.getElementById('adminNewPassword');
+        const pwdLbl = document.getElementById('adminNewPasswordLabel');
+        const roleEl = document.getElementById('adminNewRole');
+        const banner = document.getElementById('adminEditModeBanner');
+        const submitBtn = document.getElementById('adminUserFormSubmitBtn');
+
+        if (origEl) origEl.value = '';
+        document.getElementById('adminAddUserForm')?.reset();
+        if (userEl) {
+            userEl.readOnly = false;
+            userEl.classList.remove('bg-slate-100');
+        }
+        if (roleEl) roleEl.disabled = false;
+        if (pwdEl) {
+            pwdEl.required = true;
+            pwdEl.placeholder = 'ตั้งรหัสผ่าน';
+        }
+        if (pwdLbl) pwdLbl.textContent = 'รหัสผ่านเริ่มต้น *';
+        if (banner) banner.classList.add('hidden');
+        if (submitBtn) {
+            submitBtn.className = 'w-full py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold shadow flex items-center justify-center gap-1.5';
+            submitBtn.innerHTML = '<i class="fas fa-user-plus"></i> <span>เพิ่มผู้ใช้งาน</span>';
+        }
     }
 
     async function promptAdminResetPwd(username) {
@@ -3588,26 +4216,30 @@
         const criticalCount = rows.filter(r => r.insight.riskLevel === 'critical').length;
 
         document.getElementById('adminCompareOverview').innerHTML = `
-            <div class="p-3.5 rounded-2xl bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800">
-                <div class="text-[11px] font-bold text-blue-600 dark:text-blue-400">จำนวนโรงงานทั้งหมด</div>
-                <div class="text-xl font-black mt-0.5">${rows.length} โรงงาน</div>
+            <div class="p-3 sm:p-3.5 rounded-2xl bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800">
+                <div class="text-[10px] sm:text-[11px] font-bold text-blue-600 dark:text-blue-400">จำนวนโรงงานทั้งหมด</div>
+                <div class="text-lg sm:text-xl font-black mt-0.5">${rows.length} โรงงาน</div>
             </div>
-            <div class="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800">
-                <div class="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">ปริมาณสุรารวมทุกโรงงาน</div>
-                <div class="text-xl font-black mt-0.5 tabular-nums">${totalNetworkStock.toLocaleString()} L</div>
+            <div class="p-3 sm:p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800">
+                <div class="text-[10px] sm:text-[11px] font-bold text-emerald-600 dark:text-emerald-400">ปริมาณสุรารวมทุกโรงงาน</div>
+                <div class="text-lg sm:text-xl font-black mt-0.5 tabular-nums">${totalNetworkStock.toLocaleString()} L</div>
             </div>
-            <div class="p-3.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800">
-                <div class="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">อัตราใช้พื้นที่รวม</div>
-                <div class="text-xl font-black mt-0.5 tabular-nums">${netUtil}%</div>
+            <div class="p-3 sm:p-3.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800">
+                <div class="text-[10px] sm:text-[11px] font-bold text-indigo-600 dark:text-indigo-400">คงคลังรวมเทียบเป้า (≥95%)</div>
+                <div class="text-lg sm:text-xl font-black mt-0.5 tabular-nums ${Number(netUtil) >= 95 ? 'text-emerald-700' : 'text-amber-600'}">${netUtil}%</div>
             </div>
-            <div class="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800">
-                <div class="text-[11px] font-bold text-rose-600 dark:text-rose-400">โรงงานต้องเฝ้าระวังเร่งด่วน</div>
-                <div class="text-xl font-black mt-0.5">${criticalCount} แห่ง</div>
+            <div class="p-3 sm:p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800">
+                <div class="text-[10px] sm:text-[11px] font-bold text-rose-600 dark:text-rose-400">ต่ำกว่าเกณฑ์/ต้องเร่งแก้</div>
+                <div class="text-lg sm:text-xl font-black mt-0.5">${criticalCount} แห่ง</div>
             </div>
         `;
 
         document.getElementById('adminCompareTableBody').innerHTML = rows.map(r => {
             const a = r.analytics;
+            const v40Tot = Number(a.v40Total !== undefined ? a.v40Total : (a.v40 + a.vLowOther));
+            const free70 = Number(a.freeCap70 !== undefined ? a.freeCap70 : Math.max(0, (a.cap70 || 0) - a.v70));
+            const free40 = Number(a.freeCap40 !== undefined ? a.freeCap40 : Math.max(0, (a.cap40 || 0) - v40Tot));
+            const utilCls = a.utilizationPct >= 95 ? 'text-emerald-600' : (a.utilizationPct >= 85 ? 'text-amber-600' : 'text-rose-600');
             const badge = a.initialized
                 ? `<span class="text-[10px] font-bold text-emerald-600">พร้อมใช้งาน</span>`
                 : `<span class="text-[10px] font-bold text-amber-600">ยังไม่ Import</span>`;
@@ -3619,9 +4251,11 @@
                     </td>
                     <td class="px-3 py-2.5 text-right font-black tabular-nums">${a.totalVol.toLocaleString()}</td>
                     <td class="px-3 py-2.5 text-right text-slate-500 tabular-nums">${a.totalCap.toLocaleString()}</td>
-                    <td class="px-3 py-2.5 text-right font-extrabold ${a.utilizationPct > 85 ? 'text-rose-600' : 'text-blue-600'} tabular-nums">${a.utilizationPct}%</td>
+                    <td class="px-3 py-2.5 text-right font-extrabold ${utilCls} tabular-nums">${a.utilizationPct}%</td>
                     <td class="px-3 py-2.5 text-right text-emerald-700 dark:text-emerald-400 font-bold tabular-nums">${a.v70.toLocaleString()}</td>
-                    <td class="px-3 py-2.5 text-right text-amber-700 dark:text-amber-400 font-bold tabular-nums">${(a.v40 + a.vLowOther).toLocaleString()}</td>
+                    <td class="px-3 py-2.5 text-right text-emerald-600 font-extrabold tabular-nums bg-emerald-50/40">${free70.toLocaleString()}</td>
+                    <td class="px-3 py-2.5 text-right text-blue-700 dark:text-blue-400 font-bold tabular-nums">${v40Tot.toLocaleString()}</td>
+                    <td class="px-3 py-2.5 text-right text-blue-600 font-extrabold tabular-nums bg-blue-50/40">${free40.toLocaleString()}</td>
                     <td class="px-3 py-2.5 text-center font-bold ${a.qcIssues > 0 ? 'text-rose-600' : 'text-emerald-600'}">${a.qcPassRate}%</td>
                     <td class="px-3 py-2.5 text-center">
                         <button type="button" onclick="window.StockMSAuth.switchAdminFactory('${escapeHtml(a.username)}'); window.StockMSUI.closeModal('adminCompareModal');" class="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold">ดูคลัง</button>
@@ -3630,32 +4264,81 @@
             `;
         }).join('');
 
-        // Render Comparison Bar Chart if Chart.js is available
+        // Render Comparison Bar Chart with Working Volume 100% Top-Cap Limit Lines (70° & 40°)
         const canvas = document.getElementById('adminCompareBarCanvas');
         if (canvas && typeof Chart !== 'undefined') {
             if (adminCompareChart) adminCompareChart.destroy();
+            const cap70Arr = rows.map(r => r.analytics.cap70 || 0);
+            const cap40Arr = rows.map(r => r.analytics.cap40 || 0);
+
+            const workingVolLimitPlugin = {
+                id: 'stockmsWorkingVolCaps',
+                afterDatasetsDraw(chart) {
+                    const { ctx, scales } = chart;
+                    const yScale = scales.y;
+                    if (!yScale) return;
+                    const meta70 = chart.getDatasetMeta(0);
+                    const meta40 = chart.getDatasetMeta(1);
+                    ctx.save();
+                    rows.forEach((r, idx) => {
+                        const drawCap = (barEl, capVal, strokeColor) => {
+                            if (!barEl || !capVal) return;
+                            const yPos = yScale.getPixelForValue(capVal);
+                            const halfW = Math.max(10, (barEl.width || 18) * 0.58);
+                            ctx.strokeStyle = strokeColor;
+                            ctx.lineWidth = 2.5;
+                            ctx.setLineDash([4, 2]);
+                            ctx.beginPath();
+                            ctx.moveTo(barEl.x - halfW, yPos);
+                            ctx.lineTo(barEl.x + halfW, yPos);
+                            ctx.stroke();
+
+                            ctx.setLineDash([]);
+                            ctx.fillStyle = strokeColor;
+                            ctx.font = 'bold 9px Sarabun, sans-serif';
+                            ctx.textAlign = 'center';
+                            ctx.fillText('100%', barEl.x, Math.max(10, yPos - 4));
+                        };
+                        if (meta70?.data?.[idx]) drawCap(meta70.data[idx], r.analytics.cap70, '#047857');
+                        if (meta40?.data?.[idx]) drawCap(meta40.data[idx], r.analytics.cap40, '#1d4ed8');
+                    });
+                    ctx.restore();
+                }
+            };
+
             adminCompareChart = new Chart(canvas.getContext('2d'), {
                 type: 'bar',
                 data: {
                     labels: rows.map(r => r.analytics.username.toUpperCase()),
                     datasets: [
-                        { label: 'สุรา 70° (L)', data: rows.map(r => r.analytics.v70), backgroundColor: '#10b981', borderRadius: 6 },
-                        { label: 'สุรา 40°/ดีกรีต่ำ (L)', data: rows.map(r => r.analytics.v40 + r.analytics.vLowOther), backgroundColor: '#3b82f6', borderRadius: 6 }
+                        { label: 'คงคลัง 70° (L)', data: rows.map(r => r.analytics.v70), backgroundColor: '#10b981', borderRadius: 6, order: 3 },
+                        { label: 'คงคลัง 40°/ต่ำกว่า (L)', data: rows.map(r => Number(r.analytics.v40Total !== undefined ? r.analytics.v40Total : (r.analytics.v40 + r.analytics.vLowOther))), backgroundColor: '#3b82f6', borderRadius: 6, order: 3 },
+                        { label: 'ลิมิต WV 100% (70°)', data: cap70Arr, type: 'line', borderColor: '#047857', backgroundColor: '#047857', borderDash: [6, 4], borderWidth: 1.8, pointStyle: 'rect', pointRadius: 4, fill: false, tension: 0, order: 1 },
+                        { label: 'ลิมิต WV 100% (40°)', data: cap40Arr, type: 'line', borderColor: '#1d4ed8', backgroundColor: '#1d4ed8', borderDash: [6, 4], borderWidth: 1.8, pointStyle: 'triangle', pointRadius: 4, fill: false, tension: 0, order: 2 }
                     ]
                 },
+                plugins: [workingVolLimitPlugin],
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
-                    scales: { y: { beginAtZero: true } }
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 10, font: { size: 10, family: 'Sarabun', weight: 'bold' } } } },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            suggestedMax: Math.max(...cap70Arr, ...cap40Arr, 1000) * 1.1
+                        }
+                    }
                 }
             });
         }
 
-        // Render Per-Factory Executive Summaries & Recommendations
+        // Render Per-Factory Executive Summaries & Recommendations (Mobile-friendly wrapping & spacing)
         document.getElementById('adminFactoryInsightsGrid').innerHTML = rows.map(r => {
             const a = r.analytics;
             const ins = r.insight;
+            const free70 = Number(a.freeCap70 !== undefined ? a.freeCap70 : Math.max(0, (a.cap70 || 0) - a.v70));
+            const free40 = Number(a.freeCap40 !== undefined ? a.freeCap40 : Math.max(0, (a.cap40 || 0) - (a.v40 + a.vLowOther)));
             const borderCls = ins.riskLevel === 'critical'
                 ? 'border-rose-300 dark:border-rose-800 bg-rose-50/40 dark:bg-rose-950/20'
                 : (ins.riskLevel === 'watch'
@@ -3664,30 +4347,34 @@
             const tagCls = ins.riskLevel === 'critical'
                 ? 'bg-rose-600 text-white'
                 : (ins.riskLevel === 'watch' ? 'bg-amber-500 text-white' : 'bg-emerald-600 text-white');
-            const tagText = ins.riskLevel === 'critical' ? 'เร่งด่วน' : (ins.riskLevel === 'watch' ? 'ติดตาม' : 'ปกติ');
+            const tagText = ins.riskLevel === 'critical' ? 'ต่ำกว่า 95% / เร่งด่วน' : (ins.riskLevel === 'watch' ? 'ติดตามเป้า 95%' : 'ผ่านเกณฑ์ ≥95%');
 
             const recItems = ins.recommendations.map(rec => {
                 const ic = rec.level === 'critical' ? 'fa-exclamation-circle text-rose-600'
                     : (rec.level === 'warn' ? 'fa-exclamation-triangle text-amber-600'
                         : (rec.level === 'ok' ? 'fa-check-circle text-emerald-600' : 'fa-info-circle text-blue-600'));
-                return `<li class="flex items-start gap-2 text-xs text-slate-700 dark:text-slate-200"><i class="fas ${ic} mt-0.5 flex-shrink-0"></i><span>${escapeHtml(rec.text)}</span></li>`;
+                return `<li class="flex items-start gap-2 text-xs leading-relaxed text-slate-700 dark:text-slate-200"><i class="fas ${ic} mt-1 flex-shrink-0"></i><span class="break-words">${escapeHtml(rec.text)}</span></li>`;
             }).join('');
 
             return `
-                <div class="p-4 rounded-2xl border ${borderCls} flex flex-col justify-between gap-2.5">
+                <div class="p-3.5 sm:p-4 rounded-2xl border ${borderCls} flex flex-col justify-between gap-2.5">
                     <div>
-                        <div class="flex justify-between items-start gap-2 mb-1.5">
-                            <div>
-                                <div class="font-black text-sm text-slate-800 dark:text-white">${escapeHtml(a.factoryName)} <span class="text-xs font-semibold text-slate-400">(${escapeHtml(a.username)})</span></div>
-                                <div class="text-[11px] font-bold text-slate-600 dark:text-slate-300">${escapeHtml(ins.headline)}</div>
+                        <div class="flex flex-wrap justify-between items-start gap-2 mb-2">
+                            <div class="min-w-0">
+                                <div class="font-black text-sm text-slate-800 dark:text-white break-words">${escapeHtml(a.factoryName)} <span class="text-xs font-semibold text-slate-400">(${escapeHtml(a.username)})</span></div>
+                                <div class="text-[11px] font-bold text-slate-600 dark:text-slate-300 leading-snug mt-0.5">${escapeHtml(ins.headline)}</div>
                             </div>
-                            <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${tagCls}">${tagText}</span>
+                            <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold whitespace-nowrap ${tagCls}">${tagText}</span>
                         </div>
-                        <ul class="space-y-1.5 mt-2">${recItems}</ul>
+                        <div class="grid grid-cols-2 gap-1.5 mb-2.5 text-[10px] font-bold">
+                            <div class="px-2.5 py-1.5 rounded-xl bg-white/80 border border-emerald-200 text-emerald-800 tabular-nums">ว่าง 70°: <b>${free70.toLocaleString()} L</b></div>
+                            <div class="px-2.5 py-1.5 rounded-xl bg-white/80 border border-blue-200 text-blue-800 tabular-nums">ว่าง 40°: <b>${free40.toLocaleString()} L</b></div>
+                        </div>
+                        <ul class="space-y-2 mt-2">${recItems}</ul>
                     </div>
-                    <div class="pt-2 border-t border-slate-200/70 dark:border-slate-700/70 flex justify-between items-center text-[11px] text-slate-500">
+                    <div class="pt-2 border-t border-slate-200/70 dark:border-slate-700/70 flex flex-wrap justify-between items-center gap-2 text-[11px] text-slate-500">
                         <span>รายการ: <b>${a.txCount}</b> • รับ30วัน: <b>${a.in30d.toLocaleString()} L</b> • จ่าย30วัน: <b>${a.out30d.toLocaleString()} L</b></span>
-                        <button type="button" onclick="window.StockMSAuth.switchAdminFactory('${escapeHtml(a.username)}'); window.StockMSUI.closeModal('adminCompareModal');" class="font-extrabold text-blue-600 hover:underline">สลับดูคลังนี้ →</button>
+                        <button type="button" onclick="window.StockMSAuth.switchAdminFactory('${escapeHtml(a.username)}'); window.StockMSUI.closeModal('adminCompareModal');" class="font-extrabold text-blue-600 hover:underline whitespace-nowrap">สลับดูคลังนี้ →</button>
                     </div>
                 </div>
             `;
@@ -3884,6 +4571,410 @@
         });
     }
 
+    function renderOnlineUsersModalBody() {
+        const body = document.getElementById('onlineUsersModalBody');
+        if (!body) return;
+        const merged = { ...readLocalPresenceMap(), ...onlineUsersMap };
+        const allEntries = Object.values(merged).sort((a, b) => {
+            const onA = isUserConsideredOnline(a) ? 0 : 1;
+            const onB = isUserConsideredOnline(b) ? 0 : 1;
+            if (onA !== onB) return onA - onB;
+            return String(a.username || '').localeCompare(String(b.username || ''));
+        });
+        if (!allEntries.length) {
+            body.innerHTML = '<div class="py-6 text-center text-slate-400">ยังไม่มีข้อมูลผู้ใช้งานออนไลน์</div>';
+            return;
+        }
+        body.innerHTML = allEntries.map(u => {
+            const isOn = isUserConsideredOnline(u);
+            const tStr = u.lastSeenAt ? u.lastSeenAt.replace('T', ' ').slice(0, 19) : '-';
+            return `
+                <div class="p-3 rounded-xl border ${isOn ? 'border-emerald-200 bg-emerald-50/50' : 'border-slate-200 bg-slate-50'} flex items-center justify-between gap-2">
+                    <div class="min-w-0">
+                        <div class="font-extrabold text-slate-800 truncate">${escapeHtml(u.displayName || u.username)} <span class="text-slate-400 font-semibold">(${escapeHtml(u.username)})</span></div>
+                        <div class="text-[11px] text-slate-500">สิทธิ์: <b>${escapeHtml(u.role || 'factory')}</b> • คลังที่ดู: <b>${escapeHtml(u.activeFactory || u.username)}</b></div>
+                    </div>
+                    <div class="text-right flex-shrink-0">
+                        ${isOn
+                    ? '<span class="stockms-online-pill"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> ออนไลน์</span>'
+                    : '<span class="inline-flex px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 text-[10px] font-bold">ออฟไลน์</span>'}
+                        <div class="text-[10px] text-slate-400 mt-1">${escapeHtml(tStr)}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function openOnlinePresenceAction() {
+        const s = getSession();
+        if (!s) return;
+        const modal = document.getElementById('onlineUsersModal');
+        if (modal) {
+            renderOnlineUsersModalBody();
+            modal.classList.remove('hidden');
+            bringModalToFront(modal);
+        }
+    }
+
+    // =========================================================================
+    // 10B. 24-HOUR QC PENDING REMINDER ENGINE (TANK >= 95% REPRESENTATIVE SAMPLE)
+    // =========================================================================
+    let pendingQcModalTab = 'overdue'; // 'overdue' | 'waiting'
+    let pendingQcCatFilter = 'ALL'; // 'ALL' | 'BLEND' | 'HIGH_70'
+
+    function hasValidRepresentativeQc(qcData) {
+        if (!qcData || typeof qcData !== 'object') return false;
+        const keys = ['degree', 'ph', 'acid', 'aldehyde', 'fusel', 'turbidity'];
+        return keys.some(k => {
+            const v = qcData[k];
+            if (v === null || v === undefined || String(v).trim() === '' || String(v).trim() === '-') return false;
+            const n = parseFloat(v);
+            return !isNaN(n) && n > 0;
+        });
+    }
+
+    function resolveTxRecordedEpochMs(tx) {
+        if (!tx) return 0;
+        if (tx.createdAt) {
+            const p = Date.parse(tx.createdAt);
+            if (!isNaN(p) && p > 0) return p;
+        }
+        const rg = Number(tx.relatedGroup);
+        if (!isNaN(rg) && rg > 1000000000000) return rg;
+        const idNum = Number(tx.id);
+        if (!isNaN(idNum) && idNum > 1000000000000) return idNum;
+        let ds = String(tx.date || '').trim();
+        if (ds.startsWith('2569-')) ds = '2026-' + ds.substring(5);
+        if (/^\d{4}-\d{2}-\d{2}/.test(ds)) {
+            const p = Date.parse(ds.slice(0, 10) + 'T08:00:00');
+            if (!isNaN(p) && p > 0) return p;
+        }
+        return 0;
+    }
+
+    function formatDateThaiReadable(dateStr) {
+        if (!dateStr) return '-';
+        let norm = String(dateStr).trim().slice(0, 10);
+        if (norm.startsWith('2569-')) norm = '2026-' + norm.substring(5);
+        const parts = norm.split('-');
+        if (parts.length !== 3) return norm;
+        const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+        const y = Number(parts[0]) + 543;
+        const m = months[(Number(parts[1]) || 1) - 1] || parts[1];
+        const d = Number(parts[2]) || parts[2];
+        return `${d} ${m} ${y} (${norm})`;
+    }
+
+    function computePendingQcReminders(payload) {
+        const p = payload || readWorkingPayload(getActiveFactoryId());
+        const txs = Array.isArray(p.liquor_transactions) ? p.liquor_transactions : [];
+        const customTanks = (Array.isArray(p.custom_tanks) && p.custom_tanks.length) ? p.custom_tanks : UNIFIED_DEFAULT_TANKS;
+        const buildings = p.custom_buildings || UNIFIED_DEFAULT_BUILDINGS;
+        const tankConfig = p.tank_config || {};
+
+        const tankMap = {};
+        customTanks.forEach(t => {
+            const bType = t.type || (buildings[t.b] ? buildings[t.b].type : 'High');
+            tankMap[t.id] = {
+                id: t.id,
+                cap: Number(t.cap) || 0,
+                bType: isDefaultBlendingTank(t.id) ? '40Deg' : bType,
+                vol: 0,
+                lastIntakeOver95: null,
+                anyQcInCurrentStack: false
+            };
+        });
+
+        const sorted = [...txs].sort((a, b) => {
+            const da = String(a.date || '').localeCompare(String(b.date || ''));
+            if (da !== 0) return da;
+            return (Number(a.id) || 0) - (Number(b.id) || 0);
+        });
+
+        sorted.forEach(tx => {
+            const st = tankMap[tx.tankId];
+            if (!st || st.cap <= 0) return;
+            const cfgSt = tankConfig[tx.tankId]?.status;
+            if (cfgSt === 'bonded' || cfgSt === 'repair') return;
+
+            const typeU = String(tx.type || '').toUpperCase();
+            const vol = parseFloat(tx.volume) || 0;
+            if (typeU.includes('IN') || typeU === 'INITIAL_IN') {
+                st.vol += vol;
+                if (hasValidRepresentativeQc(tx.qcData)) {
+                    st.anyQcInCurrentStack = true;
+                }
+                const ratio = st.vol / st.cap;
+                const isBlendCategory = typeU === 'BLEND_IN';
+                const isHighStorageCategory = st.bType === 'High' && (typeU === 'IN' || typeU === 'TRANSFER_IN' || typeU === 'INITIAL_IN');
+                if (ratio >= 0.95 && (isBlendCategory || isHighStorageCategory)) {
+                    st.lastIntakeOver95 = {
+                        tx,
+                        category: isBlendCategory ? 'BLEND' : 'HIGH_70',
+                        fillPctAtTx: Number((ratio * 100).toFixed(1))
+                    };
+                }
+            } else if (typeU.includes('OUT')) {
+                st.vol = Math.max(0, st.vol - vol);
+                if (st.vol < 0.001) {
+                    st.vol = 0;
+                    st.lastIntakeOver95 = null;
+                    st.anyQcInCurrentStack = false;
+                }
+            }
+        });
+
+        const nowMs = Date.now();
+        const items = [];
+        Object.values(tankMap).forEach(st => {
+            if (!st.lastIntakeOver95) return;
+            const liveRatio = st.cap > 0 ? (st.vol / st.cap) : 0;
+            if (liveRatio < 0.95) return; // Only full / >= 95% tanks require representative analysis
+            const { tx, category } = st.lastIntakeOver95;
+            if (hasValidRepresentativeQc(tx.qcData) || st.anyQcInCurrentStack) return;
+
+            const recordedAtMs = resolveTxRecordedEpochMs(tx);
+            const elapsedMs = recordedAtMs > 0 ? Math.max(0, nowMs - recordedAtMs) : 0;
+            const elapsedHours = Math.floor(elapsedMs / 3600000);
+            const isOverdue24h = elapsedMs >= 24 * 3600 * 1000;
+
+            items.push({
+                txId: tx.id,
+                tx,
+                tankId: st.id,
+                cap: st.cap,
+                liveVol: Math.round(st.vol),
+                fillPct: Number((liveRatio * 100).toFixed(1)),
+                category,
+                categoryLabel: category === 'BLEND' ? `ถังปรุงสุรา (${tx.targetDegree || '40'}°)` : 'ถังเก็บบ่มดีกรีสูง (70°)',
+                dateRaw: String(tx.date || '').slice(0, 10),
+                dateFormatted: formatDateThaiReadable(tx.date),
+                batch: tx.batch || '-',
+                recordedAtMs,
+                elapsedHours,
+                isOverdue24h
+            });
+        });
+
+        items.sort((a, b) => (a.recordedAtMs || 0) - (b.recordedAtMs || 0));
+        const overdue = items.filter(x => x.isOverdue24h);
+        const waiting = items.filter(x => !x.isOverdue24h);
+        return {
+            all: items,
+            overdue,
+            waiting,
+            overdueTotal: overdue.length,
+            overdueBlend: overdue.filter(x => x.category === 'BLEND').length,
+            overdueHigh70: overdue.filter(x => x.category === 'HIGH_70').length,
+            waitingTotal: waiting.length
+        };
+    }
+
+    function refreshQcPendingReminders() {
+        const s = getSession();
+        if (!s) return null;
+        const summary = computePendingQcReminders();
+
+        const navBtn = document.getElementById('navBtnPendingQcReminder');
+        const navBadge = document.getElementById('navPendingQcBadge');
+        if (navBtn) {
+            navBtn.classList.remove('hidden');
+            navBtn.classList.add('inline-flex');
+        }
+        if (navBadge) {
+            navBadge.textContent = String(summary.overdueTotal);
+            navBadge.classList.toggle('hidden', summary.overdueTotal <= 0);
+        }
+
+        const kmBadge = document.getElementById('kmPendingQcBadge');
+        if (kmBadge) {
+            kmBadge.textContent = String(summary.overdueTotal);
+            kmBadge.classList.toggle('hidden', summary.overdueTotal <= 0);
+        }
+
+        const modal = document.getElementById('qcPendingReminderModal');
+        if (modal && !modal.classList.contains('hidden')) {
+            renderPendingQcModalBody(summary);
+        }
+        return summary;
+    }
+
+    function renderPendingQcModalBody(explicitSummary) {
+        const summary = explicitSummary || computePendingQcReminders();
+        const sumRow = document.getElementById('qcPendingSummaryRow');
+        const listEl = document.getElementById('qcPendingListBody');
+        if (!sumRow || !listEl) return;
+
+        sumRow.innerHTML = `
+            <div class="p-3 rounded-2xl bg-rose-50 border border-rose-200">
+                <div class="text-[10px] font-bold text-rose-600 uppercase">ค้างกรอกเกิน 24 ชม. (ทั้งหมด)</div>
+                <div class="text-xl font-black text-rose-700 mt-0.5 tabular-nums">${summary.overdueTotal} รายการ</div>
+            </div>
+            <div class="p-3 rounded-2xl bg-fuchsia-50 border border-fuchsia-200">
+                <div class="text-[10px] font-bold text-fuchsia-700 uppercase">ถังปรุงสุรา ≥95% (เกิน 24 ชม.)</div>
+                <div class="text-xl font-black text-fuchsia-800 mt-0.5 tabular-nums">${summary.overdueBlend} รายการ</div>
+            </div>
+            <div class="p-3 rounded-2xl bg-emerald-50 border border-emerald-200">
+                <div class="text-[10px] font-bold text-emerald-700 uppercase">ถังเก็บบ่ม 70° ≥95% (เกิน 24 ชม.)</div>
+                <div class="text-xl font-black text-emerald-800 mt-0.5 tabular-nums">${summary.overdueHigh70} รายการ</div>
+            </div>
+        `;
+
+        const overBtn = document.getElementById('qcRemTabOverdue');
+        const waitBtn = document.getElementById('qcRemTabWaiting');
+        if (overBtn && waitBtn) {
+            overBtn.textContent = `เกิน 24 ชม. (${summary.overdueTotal})`;
+            waitBtn.textContent = `รอครบ 24 ชม. (${summary.waitingTotal})`;
+            overBtn.className = pendingQcModalTab === 'overdue'
+                ? 'px-3 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-extrabold shadow-xs'
+                : 'px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold';
+            waitBtn.className = pendingQcModalTab === 'waiting'
+                ? 'px-3 py-1.5 rounded-xl bg-amber-500 text-white text-xs font-extrabold shadow-xs'
+                : 'px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold';
+        }
+
+        document.querySelectorAll('[data-qcrem-cat]').forEach(btn => {
+            const c = btn.getAttribute('data-qcrem-cat');
+            btn.classList.toggle('ring-2', c === pendingQcCatFilter);
+            btn.classList.toggle('ring-offset-1', c === pendingQcCatFilter);
+            btn.classList.toggle('ring-slate-500', c === pendingQcCatFilter);
+        });
+
+        const baseList = pendingQcModalTab === 'waiting' ? summary.waiting : summary.overdue;
+        const filtered = baseList.filter(it => pendingQcCatFilter === 'ALL' || it.category === pendingQcCatFilter);
+
+        if (!filtered.length) {
+            listEl.innerHTML = `<div class="py-8 text-center text-slate-400 font-bold border border-dashed border-slate-200 rounded-2xl">${pendingQcModalTab === 'overdue' ? 'ไม่มีรายการค้างกรอกผลวิเคราะห์ QC ที่เกิน 24 ชั่วโมงแล้ว' : 'ไม่มีถัง ≥95% ที่อยู่ระหว่างรอผล Lab < 24 ชั่วโมง'}</div>`;
+            return;
+        }
+
+        listEl.innerHTML = filtered.map(it => {
+            const catCls = it.category === 'BLEND'
+                ? 'bg-fuchsia-100 text-fuchsia-800 border-fuchsia-300'
+                : 'bg-emerald-100 text-emerald-800 border-emerald-300';
+            const days = Math.floor(it.elapsedHours / 24);
+            const hrs = it.elapsedHours % 24;
+            const elapsedText = days > 0 ? `${days} วัน ${hrs} ชม.` : `${it.elapsedHours} ชม.`;
+            return `
+                <div onclick="window.StockMSUI.openQuickQcEntryModal('${escapeHtml(String(it.txId))}')" class="p-3.5 rounded-2xl border ${it.isOverdue24h ? 'border-rose-200 bg-rose-50/40 hover:bg-rose-50' : 'border-amber-200 bg-amber-50/40 hover:bg-amber-50'} transition cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div class="space-y-1 min-w-0">
+                        <div class="flex flex-wrap items-center gap-1.5">
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${catCls}">${escapeHtml(it.categoryLabel)}</span>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-800 text-white">ถัง ${escapeHtml(it.tankId)}</span>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-100 text-blue-800">${it.fillPct}% (${it.liveVol.toLocaleString()} / ${it.cap.toLocaleString()} L)</span>
+                        </div>
+                        <div class="text-slate-700 font-bold">วันเดือนปีที่ทำรายการ: <span class="text-indigo-700 font-black">${escapeHtml(it.dateFormatted)}</span> • Batch: <b>${escapeHtml(it.batch)}</b></div>
+                        <div class="text-[11px] text-slate-500">รอผล Lab มาแล้ว <b class="${it.isOverdue24h ? 'text-rose-600' : 'text-amber-600'}">${elapsedText}</b> • รายการ: ${escapeHtml(it.tx.type || '-')}</div>
+                    </div>
+                    <button type="button" onclick="event.stopPropagation(); window.StockMSUI.openQuickQcEntryModal('${escapeHtml(String(it.txId))}')" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-extrabold text-xs shadow-sm whitespace-nowrap flex items-center justify-center gap-1.5">
+                        <i class="fas fa-edit"></i> กรอกผลวิเคราะห์ทันที
+                    </button>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function openQcPendingReminderModal() {
+        const s = getSession();
+        if (!s) return;
+        const modal = document.getElementById('qcPendingReminderModal');
+        if (!modal) return;
+        const summary = refreshQcPendingReminders();
+        pendingQcModalTab = (summary.overdueTotal === 0 && summary.waitingTotal > 0) ? 'waiting' : 'overdue';
+        renderPendingQcModalBody(summary);
+        modal.classList.remove('hidden');
+        bringModalToFront(modal);
+    }
+
+    function switchPendingQcTab(tab) {
+        pendingQcModalTab = tab === 'waiting' ? 'waiting' : 'overdue';
+        renderPendingQcModalBody();
+    }
+
+    function setPendingQcCatFilter(cat) {
+        pendingQcCatFilter = ['BLEND', 'HIGH_70'].includes(cat) ? cat : 'ALL';
+        renderPendingQcModalBody();
+    }
+
+    async function openQuickQcEntryModal(txIdRaw) {
+        if (typeof Swal === 'undefined') return;
+        const fId = getActiveFactoryId();
+        const payload = readWorkingPayload(fId);
+        const txs = Array.isArray(payload.liquor_transactions) ? payload.liquor_transactions : [];
+        const txIdx = txs.findIndex(t => String(t.id) === String(txIdRaw));
+        if (txIdx < 0) {
+            Swal.fire('ไม่พบรายการ', 'ไม่พบ Transaction ที่ต้องการกรอกผล QC ในคลังปัจจุบัน', 'error');
+            return;
+        }
+        const tx = txs[txIdx];
+        const prevQc = tx.qcData || {};
+
+        const { value: qcValues } = await Swal.fire({
+            title: `กรอกผลวิเคราะห์ QC • ถัง ${escapeHtml(tx.tankId || '-')}`,
+            width: 560,
+            html: `
+                <div class="text-left text-xs space-y-3">
+                    <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                        <div><b>วันเดือนปีที่ทำรายการ:</b> ${escapeHtml(formatDateThaiReadable(tx.date))}</div>
+                        <div><b>ประเภท:</b> ${escapeHtml(tx.type || '-')} • <b>Batch:</b> ${escapeHtml(tx.batch || '-')} • <b>ปริมาตร:</b> ${(parseFloat(tx.volume) || 0).toLocaleString()} L</div>
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                        <div><label class="block text-[10px] font-bold text-slate-500 mb-1">ดีกรีแอลกอฮอล์ (°)</label><input id="qqc_deg" type="number" step="0.01" class="w-full px-2.5 py-2 border border-slate-300 rounded-xl font-bold" value="${escapeHtml(prevQc.degree ?? '')}" placeholder="${tx.type === 'BLEND_IN' ? (tx.targetDegree || '40.0') : '70.0'}"></div>
+                        <div><label class="block text-[10px] font-bold text-slate-500 mb-1">ค่า pH</label><input id="qqc_ph" type="number" step="0.01" class="w-full px-2.5 py-2 border border-slate-300 rounded-xl font-bold" value="${escapeHtml(prevQc.ph ?? '')}" placeholder="4.50"></div>
+                        <div><label class="block text-[10px] font-bold text-slate-500 mb-1">ค่ากรดรวม (% Acid)</label><input id="qqc_acid" type="number" step="0.0001" class="w-full px-2.5 py-2 border border-slate-300 rounded-xl font-bold" value="${escapeHtml(prevQc.acid ?? '')}" placeholder="0.025"></div>
+                        <div><label class="block text-[10px] font-bold text-slate-500 mb-1">แอลดีไฮด์ (mg/L)</label><input id="qqc_ald" type="number" step="0.01" class="w-full px-2.5 py-2 border border-slate-300 rounded-xl font-bold" value="${escapeHtml(prevQc.aldehyde ?? '')}" placeholder="30"></div>
+                        <div><label class="block text-[10px] font-bold text-slate-500 mb-1">ฟิวเซลออยล์ (mg/L)</label><input id="qqc_fus" type="number" step="1" class="w-full px-2.5 py-2 border border-slate-300 rounded-xl font-bold" value="${escapeHtml(prevQc.fusel ?? '')}" placeholder="1500"></div>
+                        <div><label class="block text-[10px] font-bold text-slate-500 mb-1">ความขุ่น (NTU)</label><input id="qqc_tur" type="number" step="0.01" class="w-full px-2.5 py-2 border border-slate-300 rounded-xl font-bold" value="${escapeHtml(prevQc.turbidity ?? '')}" placeholder="0.50"></div>
+                    </div>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonColor: '#2563eb',
+            confirmButtonText: '<i class="fas fa-save mr-1"></i> บันทึกผลวิเคราะห์ QC',
+            cancelButtonText: 'ยกเลิก',
+            preConfirm: () => {
+                const qc = {
+                    degree: document.getElementById('qqc_deg').value.trim(),
+                    ph: document.getElementById('qqc_ph').value.trim(),
+                    acid: document.getElementById('qqc_acid').value.trim(),
+                    aldehyde: document.getElementById('qqc_ald').value.trim(),
+                    fusel: document.getElementById('qqc_fus').value.trim(),
+                    turbidity: document.getElementById('qqc_tur').value.trim()
+                };
+                if (!hasValidRepresentativeQc(qc)) {
+                    Swal.showValidationMessage('กรุณากรอกค่าผลวิเคราะห์อย่างน้อย 1 รายการ (เช่น Degree / pH)');
+                    return false;
+                }
+                return qc;
+            }
+        });
+
+        if (!qcValues) return;
+
+        // Persist to localStorage, sync host in-memory lexical `transactions` via reloadAllStorageData(), then trigger saveData()
+        const beforeSnap = clonePayloadSnapshot(readTenantLocalPayload(fId));
+        txs[txIdx].qcData = qcValues;
+        localStorage.setItem('liquor_transactions', JSON.stringify(txs));
+        if (typeof window.reloadAllStorageData === 'function') {
+            window.reloadAllStorageData();
+        }
+
+        if (typeof window.saveData === 'function' && window.saveData.__stockmsWrapped) {
+            window.saveData();
+        } else {
+            const nextPayload = readWorkingPayload(fId);
+            nextPayload.initialized = true;
+            writeTenantLocalPayload(fId, nextPayload);
+            scheduleCloudSync();
+            await recordWorkspaceChangeLog(fId, beforeSnap, nextPayload);
+        }
+
+        triggerHostPageReload();
+        refreshMobileShellData();
+        refreshQcPendingReminders();
+        Swal.fire('บันทึกผลวิเคราะห์สำเร็จ!', `อัปเดตผลตรวจ QC ของถัง ${tx.tankId} เรียบร้อยแล้ว`, 'success');
+    }
+
     async function renderAuthHeaderControls() {
         const session = getSession();
         if (!session) return;
@@ -3911,10 +5002,11 @@
                 }
             });
         };
-        showAdminElems(['navAdminFactoryWrap', 'navAdminOnlineUsersWrap', 'navBtnAdminCompare', 'navBtnAdminLogs', 'navBtnAdminUsers', 'kmAdminSwitchBar'], true);
+        showAdminElems(['navAdminFactoryWrap', 'navBtnAdminCompare', 'navBtnAdminLogs', 'navBtnAdminUsers', 'kmAdminSwitchBar'], true);
         showAdminElems(['kmBtnAdminUsers', 'kmBtnAdminCompare', 'kmBtnAdminLogs'], false);
         updateAdminLogsBadgeUI();
         renderOnlinePresenceUI();
+        refreshQcPendingReminders();
 
         if (isAdmin) {
             const users = await loadAllUsersList();
@@ -3984,8 +5076,8 @@
             const items = onDash ? [
                 { label: 'ผังคลัง & ถัง', icon: 'fa-th', bg: '#dcfce7', color: '#15803d', fn: "window.StockMSUI.switchMobileTab('tanks')" },
                 { label: 'เฝ้าระวัง QC', icon: 'fa-microscope', bg: '#dbeafe', color: '#1d4ed8', fn: "window.StockMSUI.triggerQCAction()" },
-                { label: 'บันทึกรับ-จ่าย', icon: 'fa-plus-circle', bg: '#fef3c7', color: '#b45309', fn: "window.location.href='index.html'" },
-                { label: 'จัดการคลัง', icon: 'fa-tasks', bg: '#ede9fe', color: '#6d28d9', fn: "window.location.href='index.html'" },
+                { label: 'บันทึกรับ-จ่าย', icon: 'fa-plus-circle', bg: '#fef3c7', color: '#b45309', fn: "window.StockMSUI.navigateSeamlessly('index.html')" },
+                { label: 'จัดการคลัง', icon: 'fa-tasks', bg: '#ede9fe', color: '#6d28d9', fn: "window.StockMSUI.navigateSeamlessly('index.html')" },
                 { label: 'กราฟครบกำหนด', icon: 'fa-chart-bar', bg: '#ffe4e6', color: '#be123c', fn: "window.StockMSUI.switchMobileTab('reports')" },
                 { label: 'รีเฟรชข้อมูล', icon: 'fa-sync-alt', bg: '#ffedd5', color: '#c2410c', fn: "if(typeof updateAllData==='function') updateAllData();" },
                 { label: 'มุมมองเต็มหน้า', icon: 'fa-desktop', bg: '#ccfbf1', color: '#0f766e', fn: "toggleMobileAppLayout(true)" },
@@ -4202,7 +5294,7 @@
 
     function openTransactionEntry() {
         if (isDashboardPage()) {
-            window.location.href = 'index.html#new-tx';
+            navigateSeamlessly('index.html#new-tx');
             return;
         }
         document.body.classList.remove('kosmate-tab-active');
@@ -4216,7 +5308,7 @@
         if (!isDashboardPage() && typeof window.openDailyReport === 'function') {
             window.openDailyReport();
         } else {
-            window.location.href = 'index.html#daily-report';
+            navigateSeamlessly('index.html#daily-report');
         }
     }
 
@@ -4224,7 +5316,7 @@
         if (!isDashboardPage() && typeof window.openReconcileModal === 'function') {
             window.openReconcileModal();
         } else {
-            window.location.href = 'index.html#reconcile';
+            navigateSeamlessly('index.html#reconcile');
         }
     }
 
@@ -4388,8 +5480,20 @@
 
     window.StockMSUI = {
         closeModal,
+        bringModalToFront,
         openChangePasswordModal,
         openAdminUserModal,
+        openAdminEditUser,
+        cancelAdminEditUser,
+        openOnlinePresenceAction,
+        openQcPendingReminderModal,
+        switchPendingQcTab,
+        setPendingQcCatFilter,
+        openQuickQcEntryModal,
+        computePendingQcReminders,
+        refreshQcPendingReminders,
+        navigateSeamlessly,
+        handleSeamlessHostNav,
         openAdminCompareModal,
         openAdminLogsModal,
         renderAdminLogsModal,
@@ -4408,7 +5512,7 @@
         executeRadialAction,
         openFullHistoryView: function () {
             if (isDashboardPage()) {
-                window.location.href = 'index.html';
+                navigateSeamlessly('index.html');
             } else {
                 switchMobileTab('reports');
                 const hist = document.getElementById('transactionTableBody')?.closest('.glass-card');
@@ -4427,20 +5531,20 @@
             if (typeof window.openQCAnomalyModal === 'function') {
                 window.openQCAnomalyModal('trend');
             } else {
-                window.location.href = 'dashboard.html?qc=open#qc-modal';
+                navigateSeamlessly('dashboard.html?qc=open#qc-modal');
             }
         },
         triggerBackupAction: function () {
             if (typeof window.exportData === 'function') {
                 window.exportData();
             } else {
-                window.location.href = 'index.html';
+                navigateSeamlessly('index.html');
             }
         },
         triggerImportAction: function () {
             const imp = document.getElementById('importFile');
             if (imp) imp.click();
-            else window.location.href = 'index.html';
+            else navigateSeamlessly('index.html');
         }
     };
 
@@ -4477,6 +5581,9 @@
         document.body.classList.add('stockms-locked');
         initFirebaseInstances();
         injectGlobalUI();
+        installDynamicModalStackObserver();
+        restorePersistentFullscreen();
+        installSeamlessLinkInterceptor();
         patchHostStorageHooks();
 
         // Default mobile tab class cleanly
@@ -4507,6 +5614,13 @@
         document.body.classList.remove('stockms-locked');
         document.getElementById('authLoginOverlay')?.classList.add('hidden');
         await activateWorkspace(getActiveFactoryId());
+
+        // Periodically refresh 24h QC pending badge every 60s
+        if (!window.__stockmsQcReminderInterval) {
+            window.__stockmsQcReminderInterval = setInterval(() => {
+                if (getSession()) refreshQcPendingReminders();
+            }, 60000);
+        }
 
         if (!isDashboardPage()) {
             const h = window.location.hash;

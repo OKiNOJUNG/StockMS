@@ -2,7 +2,10 @@
 <html lang="th" class="scroll-smooth">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
     <title>Blending Stock Control (BLENDING Team)</title>
     
     <!-- Tailwind CSS with Dark Mode Configuration -->
@@ -3315,7 +3318,8 @@ function updateBuildingDropdowns() {
                     batch: l.batch,
                     notes: "ยอดยกมา (Initial Stock)",
                     qcData: qcData,
-                    targetDegree: layerDeg
+                    targetDegree: layerDeg,
+                    createdAt: new Date().toISOString()
                 });
             }
 
@@ -4609,8 +4613,9 @@ function renderPayRows() {
             }
             
             const newRecIds = generateTransactionIds(seriesRows.length);
+            const recCreatedAt = new Date().toISOString();
             seriesRows.forEach((r, idx) => {
-                transactions.push({ id: newRecIds[idx], date: date, tankId: r.tank, type: 'IN', volume: parseFloat(r.volume), batch: r.batch, notes: notes, relatedGroup: relatedGroup });
+                transactions.push({ id: newRecIds[idx], date: date, tankId: r.tank, type: 'IN', volume: parseFloat(r.volume), batch: r.batch, notes: notes, relatedGroup: relatedGroup, createdAt: recCreatedAt });
             });
 
             saveData(); recalculateState();
@@ -4745,7 +4750,7 @@ function renderPayRows() {
                 txsToPush.push({ 
                     id: newTrfIds[trfIdIdx++], date: date, tankId: r.tank, fromTank: srcNames, type: 'TRANSFER_IN', volume: vol, 
                     batch: combinedOutBatchStr, sourceLayers: distributedLayers, 
-                    notes: `From ${srcNames}. ${notes}`, relatedGroup: transferGroupId 
+                    notes: `From ${srcNames}. ${notes}`, relatedGroup: transferGroupId, createdAt: new Date().toISOString()
                 });
             });
 
@@ -4837,7 +4842,7 @@ function renderPayRows() {
                 txsToPush.push({ 
                     id: newBlendIds[blendIdIdx++], date: date, tankId: row.tank, type: 'BLEND_IN', volume: vIn, batch: row.batch, 
                     sourceLayers: distributedLayers, notes: `Blend ${targetDegree}° from ${sourceId}${sourceId2 ? ' & '+sourceId2 : ''}. ${notes}`, 
-                    relatedGroup: blendGroup, qcData: qcData, targetDegree: targetDegree
+                    relatedGroup: blendGroup, qcData: qcData, targetDegree: targetDegree, createdAt: new Date().toISOString()
                 });
             });
 
