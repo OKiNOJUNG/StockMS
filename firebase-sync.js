@@ -3297,8 +3297,8 @@
             </div>
             <div class="xl:col-span-5 p-3.5 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40">
                 <div class="text-xs font-extrabold mb-1 text-slate-700 dark:text-slate-200 flex items-center justify-between gap-2 flex-wrap">
-                    <span><i class="fas fa-chart-bar text-blue-600 mr-1.5"></i> ปริมาณสุรารายโรงงาน vs ลิมิต Working Volume 100%</span>
-                    <span class="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">เส้นขีดบน = 100% WV</span>
+                    <span><i class="fas fa-chart-bar text-blue-600 mr-1.5"></i> ปริมาณสุรารายโรงงาน vs ลิมิต Working Volume</span>
+                    <span class="text-[10px] font-bold text-slate-600 bg-white px-2 py-0.5 rounded-full border border-slate-200">เส้นขีดบน = ลิมิตความจุใช้งาน</span>
                 </div>
                 <div class="h-64 sm:h-72 relative"><canvas id="adminCompareBarCanvas"></canvas></div>
             </div>
@@ -4264,7 +4264,7 @@
             `;
         }).join('');
 
-        // Render Comparison Bar Chart with Working Volume 100% Top-Cap Limit Lines (70° & 40°)
+        // Render Comparison Bar Chart with Working Volume Top-Cap Limit Lines (70° & 40°, no overlapping labels)
         const canvas = document.getElementById('adminCompareBarCanvas');
         if (canvas && typeof Chart !== 'undefined') {
             if (adminCompareChart) adminCompareChart.destroy();
@@ -4284,9 +4284,9 @@
                         const drawCap = (barEl, capVal, strokeColor) => {
                             if (!barEl || !capVal) return;
                             const yPos = yScale.getPixelForValue(capVal);
-                            const halfW = Math.max(10, (barEl.width || 18) * 0.58);
+                            const halfW = Math.max(7, (barEl.width || 16) * 0.46);
                             ctx.strokeStyle = strokeColor;
-                            ctx.lineWidth = 2.5;
+                            ctx.lineWidth = 2;
                             ctx.setLineDash([4, 2]);
                             ctx.beginPath();
                             ctx.moveTo(barEl.x - halfW, yPos);
@@ -4294,13 +4294,15 @@
                             ctx.stroke();
 
                             ctx.setLineDash([]);
-                            ctx.fillStyle = strokeColor;
-                            ctx.font = 'bold 9px Sarabun, sans-serif';
-                            ctx.textAlign = 'center';
-                            ctx.fillText('100%', barEl.x, Math.max(10, yPos - 4));
+                            ctx.beginPath();
+                            ctx.moveTo(barEl.x - halfW, yPos - 3);
+                            ctx.lineTo(barEl.x - halfW, yPos + 3);
+                            ctx.moveTo(barEl.x + halfW, yPos - 3);
+                            ctx.lineTo(barEl.x + halfW, yPos + 3);
+                            ctx.stroke();
                         };
-                        if (meta70?.data?.[idx]) drawCap(meta70.data[idx], r.analytics.cap70, '#047857');
-                        if (meta40?.data?.[idx]) drawCap(meta40.data[idx], r.analytics.cap40, '#1d4ed8');
+                        if (meta70 && !meta70.hidden && meta70.data?.[idx]) drawCap(meta70.data[idx], r.analytics.cap70, '#047857');
+                        if (meta40 && !meta40.hidden && meta40.data?.[idx]) drawCap(meta40.data[idx], r.analytics.cap40, '#1d4ed8');
                     });
                     ctx.restore();
                 }
@@ -4311,22 +4313,48 @@
                 data: {
                     labels: rows.map(r => r.analytics.username.toUpperCase()),
                     datasets: [
-                        { label: 'คงคลัง 70° (L)', data: rows.map(r => r.analytics.v70), backgroundColor: '#10b981', borderRadius: 6, order: 3 },
-                        { label: 'คงคลัง 40°/ต่ำกว่า (L)', data: rows.map(r => Number(r.analytics.v40Total !== undefined ? r.analytics.v40Total : (r.analytics.v40 + r.analytics.vLowOther))), backgroundColor: '#3b82f6', borderRadius: 6, order: 3 },
-                        { label: 'ลิมิต WV 100% (70°)', data: cap70Arr, type: 'line', borderColor: '#047857', backgroundColor: '#047857', borderDash: [6, 4], borderWidth: 1.8, pointStyle: 'rect', pointRadius: 4, fill: false, tension: 0, order: 1 },
-                        { label: 'ลิมิต WV 100% (40°)', data: cap40Arr, type: 'line', borderColor: '#1d4ed8', backgroundColor: '#1d4ed8', borderDash: [6, 4], borderWidth: 1.8, pointStyle: 'triangle', pointRadius: 4, fill: false, tension: 0, order: 2 }
+                        { label: 'คงคลัง 70° (L)', data: rows.map(r => r.analytics.v70), backgroundColor: '#10b981', borderRadius: 6, barPercentage: 0.72, categoryPercentage: 0.76, order: 2, datalabels: { display: false } },
+                        { label: 'คงคลัง 40°/ต่ำกว่า (L)', data: rows.map(r => Number(r.analytics.v40Total !== undefined ? r.analytics.v40Total : (r.analytics.v40 + r.analytics.vLowOther))), backgroundColor: '#3b82f6', borderRadius: 6, barPercentage: 0.72, categoryPercentage: 0.76, order: 2, datalabels: { display: false } },
+                        { label: 'ลิมิต WV (70°)', data: cap70Arr, type: 'line', showLine: false, borderColor: '#047857', backgroundColor: '#047857', borderDash: [4, 2], borderWidth: 2, pointStyle: 'line', pointRadius: 0, pointHoverRadius: 0, fill: false, order: 1, datalabels: { display: false } },
+                        { label: 'ลิมิต WV (40°)', data: cap40Arr, type: 'line', showLine: false, borderColor: '#1d4ed8', backgroundColor: '#1d4ed8', borderDash: [4, 2], borderWidth: 2, pointStyle: 'line', pointRadius: 0, pointHoverRadius: 0, fill: false, order: 1, datalabels: { display: false } }
                     ]
                 },
                 plugins: [workingVolLimitPlugin],
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    layout: { padding: { top: 12, right: 8, left: 4, bottom: 2 } },
                     interaction: { mode: 'index', intersect: false },
-                    plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 10, font: { size: 10, family: 'Sarabun', weight: 'bold' } } } },
+                    plugins: {
+                        datalabels: { display: false },
+                        legend: {
+                            position: 'bottom',
+                            labels: { usePointStyle: true, boxWidth: 14, padding: 10, font: { size: 10, family: 'Sarabun', weight: 'bold' } }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => `${ctx.dataset.label}: ${Number(ctx.parsed.y || 0).toLocaleString()} L`
+                            }
+                        }
+                    },
                     scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { size: 10, family: 'Sarabun', weight: 'bold' } }
+                        },
                         y: {
                             beginAtZero: true,
-                            suggestedMax: Math.max(...cap70Arr, ...cap40Arr, 1000) * 1.1
+                            suggestedMax: Math.max(...cap70Arr, ...cap40Arr, 1000) * 1.12,
+                            grid: { color: 'rgba(148, 163, 184, 0.18)' },
+                            ticks: {
+                                font: { size: 10, family: 'Sarabun' },
+                                callback: (v) => {
+                                    const num = Number(v);
+                                    if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+                                    if (num >= 1000) return Math.round(num / 1000) + 'k';
+                                    return num;
+                                }
+                            }
                         }
                     }
                 }
