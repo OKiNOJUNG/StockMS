@@ -2218,6 +2218,9 @@ function updateTrfRow(id, type, field, value) {
         const rowsPerPage = 10;
 
         function initTankStates() {
+            if (typeof window.ensureReferencedTanksInList === 'function') {
+                TANK_DEFINITIONS = window.ensureReferencedTanksInList(TANK_DEFINITIONS, transactions);
+            }
             tankStates = {};
             TANK_DEFINITIONS.forEach(t => {
                 tankStates[t.id] = { layers: [], currentVolume: 0, capacity: t.cap };
@@ -3746,20 +3749,23 @@ const bgColors = filteredTanks.map(t => {
                         legend: { display: false }
                     }
                 },
-                plugins: [{
-                    id: 'customBorder',
-                    afterDatasetsDraw(chart) {
-                        const { ctx, scales: { x, y } } = chart;
-                        chart.getDatasetMeta(0).data.forEach((bar, index) => {
-                            const tankId = chart.data.labels[index];
-                            let strokeColor = null; let lineDash = [];
-                            if (tankId === activeTanks.high) { strokeColor = '#1e3a8a'; lineDash = [10, 5]; } 
-                            else if (tankId === activeTanks.deg40) { strokeColor = '#3b82f6'; lineDash = [10, 5]; } 
-                            else if (tankId === activeTanks.nextHigh || tankId === activeTanks.next40) { strokeColor = '#fbbf24'; lineDash = [5, 5]; } 
-                            if (strokeColor) { const { x: barX, width } = bar; ctx.save(); ctx.strokeStyle = strokeColor; ctx.lineWidth = 3; ctx.setLineDash(lineDash); ctx.strokeRect(barX - width / 2 - 2, y.getPixelForValue(maxTankCap * 1.05), width + 4, y.getPixelForValue(0) - y.getPixelForValue(maxTankCap * 1.05)); ctx.restore(); }
-                        });
-                    }
-                }]
+                plugins: [
+                    {
+                        id: 'customBorder',
+                        afterDatasetsDraw(chart) {
+                            const { ctx, scales: { x, y } } = chart;
+                            chart.getDatasetMeta(0).data.forEach((bar, index) => {
+                                const tankId = chart.data.labels[index];
+                                let strokeColor = null; let lineDash = [];
+                                if (tankId === activeTanks.high) { strokeColor = '#1e3a8a'; lineDash = [10, 5]; } 
+                                else if (tankId === activeTanks.deg40) { strokeColor = '#3b82f6'; lineDash = [10, 5]; } 
+                                else if (tankId === activeTanks.nextHigh || tankId === activeTanks.next40) { strokeColor = '#fbbf24'; lineDash = [5, 5]; } 
+                                if (strokeColor) { const { x: barX, width } = bar; ctx.save(); ctx.strokeStyle = strokeColor; ctx.lineWidth = 3; ctx.setLineDash(lineDash); ctx.strokeRect(barX - width / 2 - 2, y.getPixelForValue(maxTankCap * 1.05), width + 4, y.getPixelForValue(0) - y.getPixelForValue(maxTankCap * 1.05)); ctx.restore(); }
+                            });
+                        }
+                    },
+                    ...(typeof window.createSmartDataLabelsPlugin === 'function' ? [window.createSmartDataLabelsPlugin({ id: 'stockmsIndexTankLabels', mode: 'stacked-top' })] : [])
+                ]
             });
         }
 
@@ -3924,6 +3930,7 @@ const bgColors = filteredTanks.map(t => {
 
             combinedTrendChartInstance = new Chart(ctx, {
                 type: 'bar',
+                plugins: typeof window.createSmartDataLabelsPlugin === 'function' ? [window.createSmartDataLabelsPlugin({ id: 'stockmsIndexTrendLabels', mode: 'trend-mixed' })] : [],
                 data: {
                     labels: dates.map(d => d.slice(5)), 
                     datasets: [

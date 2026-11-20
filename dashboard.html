@@ -1407,6 +1407,13 @@
                    str.includes('ปรุงสุรา') || str.includes('ถังปรุง');
         }
 
+        function isBottlingTankId(tankId) {
+            if (!tankId) return false;
+            const s = String(tankId).trim();
+            return ['2319', '2301', '2302', '2303', '2304', 'รอบรรจุ'].some(id => s === id || s.startsWith(id))
+                || s.includes('รอบรรจุ') || s.includes('ส่งบรรจุ') || s.includes('จ่ายบรรจุ');
+        }
+
         let forecastChartInstance, barChartInstance, radarChart70Instance, radarChart40Instance, ageChartInstance;
 
         try {
@@ -1558,6 +1565,9 @@
             let customTanks = JSON.parse(localStorage.getItem('custom_tanks'));
             if (!customTanks || !Array.isArray(customTanks) || customTanks.length === 0) {
                 customTanks = DEFAULT_TANKS;
+            }
+            if (typeof window.ensureReferencedTanksInList === 'function') {
+                customTanks = window.ensureReferencedTanksInList(customTanks, txs);
             }
             const tankConfig = JSON.parse(localStorage.getItem('tank_config')) || {};
             const globalSettings = JSON.parse(localStorage.getItem('global_settings')) || {};
@@ -1876,7 +1886,7 @@
             filteredTxs.forEach(tx => {
                 const type = (tx.type || '').toUpperCase();
                 const tId = String(tx.tankId || tx.fromTank || '').trim();
-                const isPackTank = ((tankTypeMap[tId] && tankTypeMap[tId] !== 'High') || ['2319', '2301', '2302', '2303', '2304'].some(id => tId.startsWith(id))) && !isBlendingTank(tId);
+                const isPackTank = ((tankTypeMap[tId] && tankTypeMap[tId] !== 'High') || isBottlingTankId(tId)) && !isBlendingTank(tId);
                 const isRealPack = isPackTank && (type === 'OUT' || type === 'PACK') && !type.includes('TRANSFER') && !type.includes('BLEND');
 
                 if (isRealPack) {
@@ -1921,10 +1931,10 @@
                     const srcFinal = fromTank !== 'ไม่ระบุ' ? fromTank : outTx.tankId;
                     const dstFinal = toTank !== 'ไม่ระบุ' ? toTank : inTx.tankId;
                     
-                    const isSrcHigh = !isBlendingTank(srcFinal) && (tankTypeMap[srcFinal] === 'High' || (!String(srcFinal).includes('/111') && !String(srcFinal).startsWith('2319')));
-                    const isDstBlendOr40 = isBlendingTank(dstFinal) || tankTypeMap[dstFinal] !== 'High' || String(dstFinal).includes('/111') || String(dstFinal).startsWith('2319') || inTx.targetDegree == '40';
+                    const isSrcHigh = !isBlendingTank(srcFinal) && !isBottlingTankId(srcFinal) && (tankTypeMap[srcFinal] === 'High' || (!String(srcFinal).includes('/111') && !String(srcFinal).startsWith('2319')));
+                    const isDstBlendOr40 = isBlendingTank(dstFinal) || isBottlingTankId(dstFinal) || tankTypeMap[dstFinal] !== 'High' || String(dstFinal).includes('/111') || String(dstFinal).startsWith('2319') || inTx.targetDegree == '40';
 
-                    let tType = (isBlendingTank(srcFinal) || isBlendingTank(dstFinal)) ? '40Deg' : (tankTypeMap[srcFinal] || tankTypeMap[dstFinal] || tankTypeMap[outTx.tankId] || tankTypeMap[inTx.tankId] || ((srcFinal.includes('/111') || srcFinal.startsWith('2319') || dstFinal.includes('/111') || dstFinal.startsWith('2319')) ? '40Deg' : 'High'));
+                    let tType = (isBlendingTank(srcFinal) || isBlendingTank(dstFinal) || isBottlingTankId(srcFinal) || isBottlingTankId(dstFinal)) ? '40Deg' : (tankTypeMap[srcFinal] || tankTypeMap[dstFinal] || tankTypeMap[outTx.tankId] || tankTypeMap[inTx.tankId] || ((srcFinal.includes('/111') || srcFinal.startsWith('2319') || dstFinal.includes('/111') || dstFinal.startsWith('2319')) ? '40Deg' : 'High'));
 
                     if (isBlendingTank(dstFinal) || inTx.targetDegree == '40') {
                         tType = 'BlendIn';
@@ -1978,11 +1988,11 @@
             const processIndividualTx = (tx) => {
                 const type = (tx.type || '').toUpperCase();
                 const vol = parseFloat(tx.volume) || 0;
-                let tType = (isBlendingTank(tx.tankId) || tx.targetDegree == '40' || tx.targetDegree == 40) ? '40Deg' : (tankTypeMap[tx.tankId] || ((String(tx.tankId).includes('/111') || String(tx.tankId).startsWith('2319')) ? '40Deg' : 'High'));
+                let tType = (isBlendingTank(tx.tankId) || isBottlingTankId(tx.tankId) || tx.targetDegree == '40' || tx.targetDegree == 40) ? '40Deg' : (tankTypeMap[tx.tankId] || ((String(tx.tankId).includes('/111') || String(tx.tankId).startsWith('2319')) ? '40Deg' : 'High'));
                 const tankStr = String(tx.tankId || tx.fromTank || '').trim();
 
                 let cat = 'ignore', from = '-', to = '-';
-                const isPackTank = ((tType !== 'High') || ['2319', '2301', '2302', '2303', '2304'].some(id => tankStr.startsWith(id))) && !isBlendingTank(tankStr);
+                const isPackTank = ((tType !== 'High') || isBottlingTankId(tankStr)) && !isBlendingTank(tankStr);
                 const isRealPack = isPackTank && (type === 'OUT' || type === 'PACK') && !type.includes('TRANSFER') && !type.includes('BLEND');
 
                 if (isRealPack) {
@@ -1997,7 +2007,7 @@
                         cat = 'blendIn40'; from = from !== 'ไม่ระบุ' ? from : 'ถังปรุง'; to = tx.tankId;
                     } else {
                         const refTank = (from !== 'ไม่ระบุ' && tankTypeMap[from]) ? from : ((to !== 'ไม่ระบุ' && tankTypeMap[to]) ? to : tx.tankId);
-                        tType = isBlendingTank(refTank) ? '40Deg' : (tankTypeMap[refTank] || ((String(refTank).includes('/111') || String(refTank).startsWith('2319')) ? '40Deg' : tType));
+                        tType = (isBlendingTank(refTank) || isBottlingTankId(refTank)) ? '40Deg' : (tankTypeMap[refTank] || ((String(refTank).includes('/111') || String(refTank).startsWith('2319')) ? '40Deg' : tType));
                         cat = tType === 'High' ? 'transfer70' : 'transfer40';
                     }
                 } else if (type.includes('BLEND')) {
@@ -2042,11 +2052,11 @@
                 const isExplicitTransfer = group.some(t => (t.type || '').toUpperCase().includes('TRANSFER'));
                 const has70 = group.some(t => {
                     const tid = t.tankId;
-                    return !isBlendingTank(tid) && (tankTypeMap[tid] === 'High' || (!String(tid).includes('/111') && !String(tid).startsWith('2319')));
+                    return !isBlendingTank(tid) && !isBottlingTankId(tid) && (tankTypeMap[tid] === 'High' || (!String(tid).includes('/111') && !String(tid).startsWith('2319')));
                 });
                 const has40 = group.some(t => {
                     const tid = t.tankId;
-                    return isBlendingTank(tid) || tankTypeMap[tid] !== 'High' || String(tid).includes('/111') || String(tid).startsWith('2319') || t.targetDegree == '40' || t.targetDegree == 40;
+                    return isBlendingTank(tid) || isBottlingTankId(tid) || tankTypeMap[tid] !== 'High' || String(tid).includes('/111') || String(tid).startsWith('2319') || t.targetDegree == '40' || t.targetDegree == 40;
                 });
                 const isCrossDegreeBlend = hasOut && hasIn && has70 && has40 && !isExplicitTransfer;
                 const isBlend = group.some(t => (t.type || '').toUpperCase().includes('BLEND')) || isCrossDegreeBlend || group.some(t => isBlendingTank(t.tankId)) || group.some(t => t.targetDegree == '40' || t.targetDegree == 40);
@@ -2079,7 +2089,7 @@
                     const toStr = toTanks.length > 0 ? toTanks.join(', ') : 'ไม่ระบุ';
 
                     const refTank = fromTanks[0] || toTanks[0] || referenceTankId;
-                    const tType = (isBlendingTank(refTank)) ? '40Deg' : (tankTypeMap[refTank] || ((String(refTank).includes('/111') || String(refTank).startsWith('2319')) ? '40Deg' : 'High'));
+                    const tType = (isBlendingTank(refTank) || isBottlingTankId(refTank)) ? '40Deg' : (tankTypeMap[refTank] || ((String(refTank).includes('/111') || String(refTank).startsWith('2319')) ? '40Deg' : 'High'));
                     let cat = tType === 'High' ? 'transfer70' : 'transfer40';
 
                     if (flow[cat]) {
@@ -2174,7 +2184,15 @@
                 },
                 plugins: { 
                     legend: { position: 'bottom', labels: { color: pointLabelColor, font: { family: 'Sarabun', size: 11 } } }, 
-                    datalabels: { display: false } 
+                    datalabels: {
+                        display: (ctx) => ctx.datasetIndex === 0 && Number(ctx.dataset.data[ctx.dataIndex]) > 0 ? 'auto' : false,
+                        backgroundColor: 'rgba(15, 23, 42, 0.76)',
+                        color: '#ffffff',
+                        borderRadius: 4,
+                        padding: { top: 1, bottom: 1, left: 3, right: 3 },
+                        font: { family: 'Sarabun', size: 9, weight: 'bold' },
+                        formatter: (v) => Number(v).toFixed(1)
+                    }
                 },
                 maintainAspectRatio: false
             };
@@ -2272,7 +2290,7 @@
                         legend: { labels: { color: textColor, font: { family: 'Sarabun', size: 11 } } },
                         datalabels: {
                             anchor: 'end', align: 'top', offset: 2, color: textColor, font: { family: 'Sarabun', size: 10, weight: 'bold' },
-                            formatter: (v) => v > 0 ? Math.round(v) : '', display: (ctx) => ctx.dataset.data[ctx.dataIndex] > 0
+                            formatter: (v) => v > 0 ? Math.round(v) : '', display: (ctx) => ctx.dataset.data[ctx.dataIndex] > 0 ? 'auto' : false
                         }
                     },
                     scales: { 
@@ -2313,9 +2331,10 @@
                     plugins: {
                         legend: { labels: { color: textColor, font: { family: 'Sarabun', size: 11 } } },
                         datalabels: {
-                            anchor: 'center', align: 'center', color: '#ffffff', font: { family: 'Sarabun', size: 10, weight: 'bold' },
-                            formatter: (v) => v > 0 ? v.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '',
-                            display: (ctx) => ctx.dataset.data[ctx.dataIndex] > 0
+                            anchor: 'center', align: 'center', color: '#ffffff', font: { family: 'Sarabun', size: 9.5, weight: 'bold' },
+                            backgroundColor: 'rgba(15, 23, 42, 0.62)', borderRadius: 4, padding: { top: 1, bottom: 1, left: 3, right: 3 },
+                            formatter: (v) => v > 0 ? (typeof window.formatCompactLitersAxis === 'function' ? window.formatCompactLitersAxis(v) : v.toLocaleString(undefined, { maximumFractionDigits: 0 })) : '',
+                            display: (ctx) => ctx.dataset.data[ctx.dataIndex] > 0 ? 'auto' : false
                         },
                         tooltip: {
                             backgroundColor: isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)',
@@ -3715,7 +3734,17 @@ Batch: ${l.batch || '-'}
                     interaction: { mode: 'index', intersect: false },
                     plugins: {
                         legend: { position: 'bottom', labels: { color: textColor, font: { family: 'Sarabun', size: 10, weight: 'bold' } } },
-                        datalabels: { display: false },
+                        datalabels: {
+                            display: (ctx) => (!ctx.dataset.borderDash && ctx.dataset.data[ctx.dataIndex] !== null && ctx.dataset.data[ctx.dataIndex] !== undefined) ? 'auto' : false,
+                            align: 'top',
+                            offset: 4,
+                            backgroundColor: 'rgba(15, 23, 42, 0.75)',
+                            color: '#ffffff',
+                            borderRadius: 4,
+                            padding: { top: 1, bottom: 1, left: 3, right: 3 },
+                            font: { family: 'Sarabun', size: 8.5, weight: 'bold' },
+                            formatter: (v) => (v !== null && v !== undefined && !isNaN(v)) ? Number(v).toFixed(2).replace(/\.?0+$/, '') : ''
+                        },
                         tooltip: {
                             backgroundColor: isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)',
                             titleColor: isDark ? '#f8fafc' : '#0f172a',
@@ -4532,7 +4561,17 @@ Batch: ${l.batch || '-'}
                     interaction: { mode: 'index', intersect: false },
                     plugins: {
                         legend: { position: 'bottom', labels: { usePointStyle: true, font: { family: 'Sarabun', size: 11, weight: 'bold' } } },
-                        datalabels: { display: false }
+                        datalabels: {
+                            display: (ctx) => (ctx.dataset.data[ctx.dataIndex] !== null && ctx.dataset.data[ctx.dataIndex] !== undefined) ? 'auto' : false,
+                            align: 'top',
+                            offset: 4,
+                            backgroundColor: 'rgba(15, 23, 42, 0.75)',
+                            color: '#ffffff',
+                            borderRadius: 4,
+                            padding: { top: 1, bottom: 1, left: 3, right: 3 },
+                            font: { family: 'Sarabun', size: 8.5, weight: 'bold' },
+                            formatter: (v) => (v !== null && v !== undefined && !isNaN(v)) ? (normalizePct ? `${Number(v).toFixed(1)}%` : Number(v).toFixed(2).replace(/\.?0+$/, '')) : ''
+                        }
                     },
                     scales: {
                         y: {

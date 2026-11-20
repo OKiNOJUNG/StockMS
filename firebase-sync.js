@@ -226,6 +226,13 @@
     let kmTankMatrixBuilding = 'ALL';
     let globalBcChannel = null;
     let adminCompareChart = null;
+    let adminTopRankChart = null;
+    let adminPolicyMetricsChart = null;
+    let adminDegreeMixChart = null;
+    let adminCompareCachedRows = [];
+    let adminTopRankMetric = 'prod';
+    let adminTopRankPeriod = '30d';
+    let adminInsightCategoryFilter = 'ALL';
     let currentMobileTab = 'home';
 
     function initFirebaseInstances() {
@@ -590,7 +597,7 @@
             return { ok: true, uid: cred.user.uid, mode: 'email', resolvedAuthVersion: preferredVer };
         } catch (err) {
             // Probe rotated .vN Auth accounts (in case Admin reset password on another device)
-            const probeVersions = [1, 2, 3, 4, 5].filter(v => v !== preferredVer);
+            const probeVersions = [1, 2, 3, 4, 5, 6, 7, 8].filter(v => v !== preferredVer);
             for (const ver of probeVersions) {
                 try {
                     const cred = await fbAuth.signInWithEmailAndPassword(buildAuthEmail(username, ver), authPass);
@@ -998,6 +1005,45 @@
             str.startsWith('ถังปรุงสุรา') || str.startsWith('ถังปรุง') || str.includes('ปรุงสุรา');
     }
 
+    function isBottlingBufferTank(tankId) {
+        if (!tankId) return false;
+        const s = String(tankId).trim();
+        return s.startsWith('รอบรรจุ') || s.includes('รอบรรจุ') || s.includes('ส่งบรรจุ') || s.includes('จ่ายบรรจุ')
+            || ['2301', '2302', '2303', '2304', '2319'].some(id => s === id || s.startsWith(id));
+    }
+    window.isBottlingBufferTank = isBottlingBufferTank;
+
+    function ensureReferencedTanksInList(customTanks, txs) {
+        const baseList = (Array.isArray(customTanks) && customTanks.length > 0)
+            ? customTanks.map(t => ({ ...t }))
+            : JSON.parse(JSON.stringify(UNIFIED_DEFAULT_TANKS));
+        if (!Array.isArray(txs) || !txs.length) return baseList;
+        const known = new Set(baseList.map(t => String(t.id).trim()));
+        txs.forEach(tx => {
+            const tid = String(tx?.tankId || '').trim();
+            if (!tid || known.has(tid)) return;
+            known.add(tid);
+            if (isBottlingBufferTank(tid)) {
+                baseList.push({
+                    id: tid,
+                    b: 'Building_111',
+                    cap: (tid.startsWith('2301') || tid.startsWith('2302')) ? 9000 : ((tid.startsWith('2303') || tid.startsWith('2304')) ? 10500 : 16000),
+                    zone: '40Deg Zone 1',
+                    type: '40Deg',
+                    isAutoBottlingBuffer: true
+                });
+            } else if (tid.includes('/111') || tid.startsWith('21')) {
+                baseList.push({ id: tid, b: 'Building_111', cap: 112000, zone: '40Deg Zone 1', type: '40Deg' });
+            } else if (tid.includes('/110')) {
+                baseList.push({ id: tid, b: 'Building_110', cap: 112000, zone: 'High Zone 2', type: 'High' });
+            } else {
+                baseList.push({ id: tid, b: 'Building_High', cap: 513000, zone: 'High Zone 3', type: 'High' });
+            }
+        });
+        return baseList;
+    }
+    window.ensureReferencedTanksInList = ensureReferencedTanksInList;
+
     function getDefaultFactoryPayload(factoryUsername, factoryDisplayName) {
         return {
             username: factoryUsername,
@@ -1042,6 +1088,7 @@
         } else if (hasAnyTenantKey && Array.isArray(base.liquor_transactions) && base.liquor_transactions.length > 0) {
             base.initialized = true;
         }
+        base.custom_tanks = ensureReferencedTanksInList(base.custom_tanks, base.liquor_transactions);
         return base;
     }
 
@@ -1120,14 +1167,23 @@
         if (!out.global_settings) out.global_settings = { cap40: 1568000, cap35: 1568000, cap30: 1568000, cap28: 1568000, cap70: 0 };
         if (!Array.isArray(out.tank_settings_history)) out.tank_settings_history = [];
         if (!out.custom_qc_limits) out.custom_qc_limits = {};
+        out.custom_tanks = ensureReferencedTanksInList(out.custom_tanks, out.liquor_transactions);
+        out.initialized = Boolean(
+            prevInit
+            || out.liquor_transactions.length > 0
+            || Object.keys(out.tank_config).length > 0
+            || out.tank_settings_history.length > 0
+        );
         return out;
     }
 
     // Unified Calculation Engine (used by Mobile Hero Card + Admin Multi-Factory Comparison + Recommendations)
     function computeFactoryAnalytics(payload) {
         const txs = Array.isArray(payload.liquor_transactions) ? payload.liquor_transactions : [];
-        const customTanks = (Array.isArray(payload.custom_tanks) && payload.custom_tanks.length > 0)
-            ? payload.custom_tanks : UNIFIED_DEFAULT_TANKS;
+        const customTanks = ensureReferencedTanksInList(
+            (Array.isArray(payload.custom_tanks) && payload.custom_tanks.length > 0) ? payload.custom_tanks : UNIFIED_DEFAULT_TANKS,
+            txs
+        );
         const buildings = payload.custom_buildings || UNIFIED_DEFAULT_BUILDINGS;
         const tankConfig = payload.tank_config || {};
         const globalSettings = payload.global_settings || { cap40: 1568000, cap35: 1568000, cap30: 1568000, cap28: 1568000, cap70: 0 };
@@ -1135,31 +1191,75 @@
 
         const tankStates = {};
         customTanks.forEach(t => {
-            const bType = t.type || (buildings[t.b] ? buildings[t.b].type : 'High');
-            tankStates[t.id] = { id: t.id, vol: 0, cap: Number(t.cap) || 0, b: t.b, type: isDefaultBlendingTank(t.id) ? '40Deg' : bType, layers: [] };
+            const bType = isBottlingBufferTank(t.id) ? '40Deg' : (t.type || (buildings[t.b] ? buildings[t.b].type : 'High'));
+            tankStates[t.id] = {
+                id: t.id,
+                vol: 0,
+                cap: Number(t.cap) || 0,
+                b: t.b,
+                type: isDefaultBlendingTank(t.id) ? '40Deg' : bType,
+                isAutoBottlingBuffer: !!t.isAutoBottlingBuffer,
+                layers: []
+            };
         });
 
         const sortedTx = [...txs].sort((a, b) => new Date(a.date) - new Date(b.date) || ((Number(a.id) || 0) - (Number(b.id) || 0)));
         const now = new Date();
-        const d30Ago = new Date(now.getTime() - 30 * 86400000).toISOString().split('T')[0];
+        const todayIso = now.toISOString().split('T')[0];
+        let anchorMs = now.getTime();
+        let maxValidTxMs = 0;
+        sortedTx.forEach(tx => {
+            const dStr = String(tx.date || '').slice(0, 10);
+            if (dStr >= '2020-01-01' && dStr <= todayIso) {
+                const ms = Date.parse(dStr);
+                if (!isNaN(ms) && ms > maxValidTxMs) maxValidTxMs = ms;
+            }
+        });
+        if (maxValidTxMs > 0 && (anchorMs - maxValidTxMs) > 7 * 86400000) {
+            anchorMs = maxValidTxMs;
+        }
+        const d30Ago = new Date(anchorMs - 30 * 86400000).toISOString().split('T')[0];
 
         let in30d = 0;
         let out30d = 0;
+        let distill30d = 0;
+        let blend30d = 0;
+        let blendOut30d = 0;
+        let outPack30d = 0;
+        let trfToBottling30d = 0;
+        let prodTotal = 0;
+        let outPackTotal = 0;
+        let trfToBottlingTotal = 0;
         let qcTotal = 0;
         let qcIssues = 0;
 
         sortedTx.forEach(tx => {
-            const t = tankStates[tx.tankId];
-            if (!t) return;
             const vol = parseFloat(tx.volume) || 0;
+            const tU = String(tx.type || '').toUpperCase();
+            const tid = String(tx.tankId || '').trim();
+            const isPackOutTx = (tU === 'OUT' || tU === 'PACK') && !isDefaultBlendingTank(tid);
+            const isBottlingTrfInTx = (tU === 'TRANSFER_IN') && isBottlingBufferTank(tid);
+
+            if (tU === 'IN' || tU === 'BLEND_IN') prodTotal += vol;
+            if (isPackOutTx) outPackTotal += vol;
+            if (isBottlingTrfInTx) trfToBottlingTotal += vol;
+
             if (tx.date >= d30Ago) {
-                if (tx.type === 'IN' || tx.type === 'BLEND_IN') in30d += vol;
-                if (tx.type === 'OUT' || tx.type === 'BLEND_OUT') out30d += vol;
+                if (tU === 'IN' || tU === 'BLEND_IN') in30d += vol;
+                if (tU === 'OUT' || tU === 'BLEND_OUT') out30d += vol;
+                if (tU === 'IN') distill30d += vol;
+                else if (tU === 'BLEND_IN') blend30d += vol;
+                else if (tU === 'BLEND_OUT') blendOut30d += vol;
+                if (isPackOutTx) outPack30d += vol;
+                if (isBottlingTrfInTx) trfToBottling30d += vol;
             }
             if (tx.qcData) {
                 qcTotal++;
                 if (tx.qcStatus === 'ISSUE') qcIssues++;
             }
+
+            const t = tankStates[tid];
+            if (!t) return;
 
             if (tx.type && (tx.type.includes('IN') || tx.type === 'INITIAL_IN')) {
                 t.vol += vol;
@@ -1199,7 +1299,7 @@
             const st = tankConfig[t.id]?.status;
             if (st === 'bonded') { bondedCount++; return; }
             if (st === 'repair') { repairCount++; return; }
-            if (isDefaultBlendingTank(t.id)) return;
+            if (isDefaultBlendingTank(t.id) || t.isAutoBottlingBuffer) return;
             const bType = t.type || (buildings[t.b] ? buildings[t.b].type : 'High');
             if (bType === 'High') totalHighCap += (Number(t.cap) || 0);
             else total40Cap += (Number(t.cap) || 0);
@@ -1249,6 +1349,13 @@
         const shortfall40To95 = Math.max(0, Math.round((cap40 * 0.95) - v40Total));
         const qcPassRate = qcTotal > 0 ? ((qcTotal - qcIssues) / qcTotal) * 100 : 100;
         const daysLeft70 = planningData.highUsage > 0 ? Math.floor(v70 / (planningData.highUsage / 30)) : null;
+        const prod30d = distill30d + blend30d;
+        const pack30d = Math.max(outPack30d, trfToBottling30d);
+        const packTotal = Math.max(outPackTotal, trfToBottlingTotal);
+        out30d = Math.max(out30d, pack30d + blendOut30d);
+        const coverageDays = pack30d > 0 ? Math.round(totalVol / (pack30d / 30)) : null;
+        let pendingQc24hCount = 0;
+        try { pendingQc24hCount = computePendingQcReminders(payload).overdueTotal || 0; } catch (e) { }
 
         return {
             username: payload.username,
@@ -1287,20 +1394,33 @@
             qcPassRate: Number(qcPassRate.toFixed(1)),
             in30d: Math.round(in30d),
             out30d: Math.round(out30d),
-            daysLeft70
+            distill30d: Math.round(distill30d),
+            blend30d: Math.round(blend30d),
+            blendOut30d: Math.round(blendOut30d),
+            prod30d: Math.round(prod30d),
+            prodTotal: Math.round(prodTotal),
+            pack30d: Math.round(pack30d),
+            packTotal: Math.round(packTotal),
+            daysLeft70,
+            coverageDays,
+            pendingQc24hCount
         };
     }
 
-    function generateFactoryRecommendations(analytics) {
-        const recs = [];
+    function generateFactoryRecommendations(analytics, rankCtx) {
+        const categories = [];
         let riskLevel = 'normal'; // 'normal' | 'watch' | 'critical'
 
         if (!analytics.initialized) {
+            const setupRecs = [
+                { category: 'policy', level: 'warn', text: '1) ตั้งค่าฐานข้อมูล: ให้ผู้ใช้งานโรงงาน Login เข้าสู่ระบบเพื่อ Import ไฟล์ Backup JSON หรือกดเริ่มต้นใช้งานใหม่' }
+            ];
             return {
                 riskLevel: 'watch',
                 headline: 'โรงงานนี้ยังไม่ได้นำเข้าข้อมูลเริ่มต้นหรือตั้งค่าฐานข้อมูลแรกเข้า',
-                recommendations: [
-                    { level: 'warn', text: '1) ตั้งค่าฐานข้อมูล: ให้ผู้ใช้งานโรงงาน Login เข้าสู่ระบบเพื่อ Import ไฟล์ Backup JSON หรือกดเริ่มต้นใช้งานใหม่' }
+                recommendations: setupRecs,
+                categories: [
+                    { id: 'policy', label: 'นโยบายสต็อก & พื้นที่คลัง', icon: 'fa-warehouse', badgeCls: 'bg-blue-50 text-blue-700 border-blue-200', items: setupRecs }
                 ]
             };
         }
@@ -1317,71 +1437,202 @@
         const shortfall70 = Number(analytics.shortfall70To95 !== undefined ? analytics.shortfall70To95 : Math.max(0, Math.round((cap70 * 0.95) - v70)));
         const shortfall40 = Number(analytics.shortfall40To95 !== undefined ? analytics.shortfall40To95 : Math.max(0, Math.round((cap40 * 0.95) - v40Total)));
 
-        // Topic 1: Policy Compliance (>= 95% Factory Stock Level)
+        const prod30 = Number(analytics.prod30d !== undefined ? analytics.prod30d : (analytics.in30d || 0));
+        const prodTot = Number(analytics.prodTotal !== undefined ? analytics.prodTotal : prod30);
+        const pack30 = Number(analytics.pack30d !== undefined ? analytics.pack30d : (analytics.out30d || 0));
+        const packTot = Number(analytics.packTotal !== undefined ? analytics.packTotal : pack30);
+        const blend30 = Number(analytics.blend30d || 0);
+        const covDays = (analytics.coverageDays !== null && analytics.coverageDays !== undefined)
+            ? Number(analytics.coverageDays)
+            : (pack30 > 0 ? Math.round((analytics.totalVol || 0) / (pack30 / 30)) : null);
+        const pendingQc24h = Number(analytics.pendingQc24hCount || 0);
+
+        // --- Category 1: นโยบายสต็อก & พื้นที่คลัง ---
+        const policyItems = [];
         if (analytics.utilizationPct >= 95) {
-            recs.push({ level: 'ok', text: `1) นโยบายสต็อก ≥95%: ผ่านเกณฑ์ตามนโยบาย (${analytics.utilizationPct}% ของความจุรวม, เหลือพื้นที่ว่างรวม ${(analytics.freeCapTotal ?? (freeCap70 + freeCap40)).toLocaleString()} L) ควรคุมรับ-จ่ายให้สมดุลไม่ให้เกิน Working Volume 100%` });
+            policyItems.push({ category: 'policy', level: 'ok', text: `1) นโยบายสต็อก ≥95%: ผ่านเกณฑ์ตามนโยบาย (${analytics.utilizationPct}% ของความจุรวม, เหลือพื้นที่ว่างรวม ${(analytics.freeCapTotal ?? (freeCap70 + freeCap40)).toLocaleString()} L) ควรคุมรับ-จ่ายให้สมดุลไม่เกิน Working Volume 100%` });
         } else if (analytics.utilizationPct >= 85) {
             if (riskLevel === 'normal') riskLevel = 'watch';
-            recs.push({ level: 'warn', text: `1) นโยบายสต็อก ≥95%: อยู่ที่ ${analytics.utilizationPct}% (ต่ำกว่านโยบาย 95% อยู่ ${(95 - analytics.utilizationPct).toFixed(1)}%) — ต้องเร่งเติมสต็อกเพิ่มอีก ${shortfall95.toLocaleString()} L` });
+            policyItems.push({ category: 'policy', level: 'warn', text: `1) นโยบายสต็อก ≥95%: อยู่ที่ ${analytics.utilizationPct}% (ต่ำกว่านโยบาย 95% อยู่ ${(95 - analytics.utilizationPct).toFixed(1)}%) — ต้องเร่งเติมสต็อกเพิ่มอีก ${shortfall95.toLocaleString()} L` });
         } else {
             riskLevel = 'critical';
-            recs.push({ level: 'critical', text: `1) นโยบายสต็อก ≥95%: ต่ำกว่าเกณฑ์นโยบายมาก (${analytics.utilizationPct}%) — ขาดจากเป้า 95% อีก ${shortfall95.toLocaleString()} L (โซน 70° ${shortfall70.toLocaleString()} L / โซน 40° ${shortfall40.toLocaleString()} L)` });
+            policyItems.push({ category: 'policy', level: 'critical', text: `1) นโยบายสต็อก ≥95%: ต่ำกว่าเกณฑ์นโยบายมาก (${analytics.utilizationPct}%) — ขาดจากเป้า 95% อีก ${shortfall95.toLocaleString()} L (โซน 70° ${shortfall70.toLocaleString()} L / โซน 40° ${shortfall40.toLocaleString()} L)` });
         }
 
-        // Topic 2: Zone Remaining Free Space & Working Volume 100% Balance (70° vs 40°)
-        recs.push({
+        policyItems.push({
+            category: 'policy',
             level: (util70 < 95 || util40 < 95) ? 'warn' : 'info',
-            text: `2) พื้นที่ว่างคงเหลือรายโซน: โซน 70° ว่าง ${freeCap70.toLocaleString()} L (ใช้ไป ${util70.toFixed(1)}%) • โซน 40° ว่าง ${freeCap40.toLocaleString()} L (ใช้ไป ${util40.toFixed(1)}%) — จัดสรรเติมเข้าถังให้ครบเกณฑ์ ≥95% โดยไม่เกิน Working Volume 100%`
+            text: `2) พื้นที่ว่างคงเหลือรายโซน: โซน 70° ว่าง ${freeCap70.toLocaleString()} L (ใช้ไป ${util70.toFixed(1)}%) • โซน 40° ว่าง ${freeCap40.toLocaleString()} L (ใช้ไป ${util40.toFixed(1)}%) — จัดสรรเติมเข้าถังให้ครบ ≥95% โดยไม่เกิน Working Volume 100%`
         });
 
-        // Topic 3: Quality (QC) & 14-Day Maturation Readiness
-        if (analytics.qcIssues > 0) {
-            riskLevel = 'critical';
-            recs.push({ level: 'critical', text: `3) คุณภาพ QC & อายุบ่ม 14 วัน: พบไม่ผ่านเกณฑ์ QC ${analytics.qcIssues} รายการ (ผ่าน ${analytics.qcPassRate}%) — ต้องปรับปรุงคุณภาพก่อนบรรจุ ขณะที่ 70° บ่มครบ 14 วันอยู่ที่ ${analytics.ready70.toLocaleString()} L` });
-        } else {
-            const readyRatio = v70 > 0 ? (analytics.ready70 / v70) * 100 : 0;
-            if (v70 > 0 && readyRatio < 25 && riskLevel === 'normal') riskLevel = 'watch';
-            recs.push({
-                level: (v70 > 0 && readyRatio >= 25) ? 'ok' : 'warn',
-                text: `3) คุณภาพ QC & อายุบ่ม 14 วัน: ผล QC ผ่าน ${analytics.qcPassRate}% (${analytics.qcTotal} ครั้ง) • สุรา 70° บ่มครบพร้อมปรุง ${readyRatio.toFixed(1)}% (${analytics.ready70.toLocaleString()} L)`
-            });
+        let covLvl = 'info';
+        let covTxt = 'ยังไม่มีประวัติการบรรจุ (OUT) ในรอบ 30 วันเพื่อคำนวณระยะเวลาสำรองสินค้าสำเร็จรูป';
+        if (covDays !== null) {
+            if (covDays < 15) {
+                covLvl = 'critical';
+                riskLevel = 'critical';
+                covTxt = `สต็อกรวมรองรับยอดบรรจุปัจจุบันได้เพียง ${covDays} วัน (<15 วัน) — เสี่ยงขาดส่งตลาด ต้องเพิ่มกำลังกลั่นและปรุงด่วน`;
+            } else if (covDays > 120) {
+                covLvl = 'warn';
+                if (riskLevel === 'normal') riskLevel = 'watch';
+                covTxt = `สต็อกรวมรองรับการบรรจุสูงถึง ${covDays} วัน (>120 วัน) — ควรเร่งระบาย/บรรจุลดภาระดอกเบี้ยสินค้าคงคลังและคืนพื้นที่ถัง`;
+            } else {
+                covLvl = 'ok';
+                covTxt = `สต็อกรวมรองรับยอดบรรจุได้ ${covDays} วัน (เกณฑ์สมดุล 15–120 วัน) สอดคล้องกับแผนกระจายสินค้า`;
+            }
         }
+        policyItems.push({ category: 'policy', level: covLvl, text: `3) ระยะเวลาครอบคลุมการบรรจุ (Inventory Coverage): ${covTxt}` });
 
-        // Topic 4 (New): 30-Day Inbound/Outbound Velocity & Replenishment Balance
+        // --- Category 2: การผลิต ยอดบรรจุ & อันดับ Top-N ---
+        const productionItems = [];
+        const rk = rankCtx || {};
+        const totalFac = Number(rk.totalFactories) || 1;
+        productionItems.push({
+            category: 'production',
+            level: (rk.prodRank30d === 1 || rk.packRank30d === 1) ? 'ok' : 'info',
+            text: `4) อันดับ Top-N เครือข่าย: ยอดผลิตอันดับ #${rk.prodRank30d || '-'}/${totalFac} (${prod30.toLocaleString()} L ใน 30 วัน, สัดส่วน ${Number(rk.prodSharePct || 0).toFixed(1)}% • สะสม ${prodTot.toLocaleString()} L) | ยอดบรรจุอันดับ #${rk.packRank30d || '-'}/${totalFac} (${pack30.toLocaleString()} L ใน 30 วัน, สัดส่วน ${Number(rk.packSharePct || 0).toFixed(1)}% • สะสม ${packTot.toLocaleString()} L)`
+        });
+
         const net30d = (analytics.in30d || 0) - (analytics.out30d || 0);
         const velOk = analytics.utilizationPct >= 95 ? net30d >= -Math.round((analytics.totalCap || 0) * 0.03) : net30d > 0;
         if (!velOk && analytics.utilizationPct < 95 && riskLevel === 'normal') riskLevel = 'watch';
-        recs.push({
+        productionItems.push({
+            category: 'production',
             level: velOk ? 'ok' : 'warn',
-            text: `4) ดุลการหมุนเวียน 30 วัน: รับเข้า ${analytics.in30d.toLocaleString()} L vs จ่ายออก ${analytics.out30d.toLocaleString()} L (สุทธิ ${net30d >= 0 ? '+' : ''}${net30d.toLocaleString()} L) — ${net30d < 0 && analytics.utilizationPct < 95 ? 'อัตราเบิกสูงกว่ารับ ทำให้สต็อกหลุดเกณฑ์ 95% ควรเพิ่มรอบรับกลั่น' : 'ความเร็วเติม-จ่ายสอดคล้องกับแผนคงสต็อก ≥95%'}`
+            text: `5) ดุลการหมุนเวียน 30 วัน: รับเข้า ${analytics.in30d.toLocaleString()} L vs จ่ายออก ${analytics.out30d.toLocaleString()} L (สุทธิ ${net30d >= 0 ? '+' : ''}${net30d.toLocaleString()} L) — ${net30d < 0 && analytics.utilizationPct < 95 ? 'อัตราเบิกสูงกว่ารับ ทำให้สต็อกหลุดเกณฑ์ 95% ควรเพิ่มรอบรับกลั่น' : 'ความเร็วเติม-จ่ายสอดคล้องกับแผนคงสต็อก ≥95%'}`
         });
 
-        // Topic 5 (New): Tank Fleet Utilization & Special Tank Impact
+        const turnoverPct = analytics.totalVol > 0 ? ((pack30 / analytics.totalVol) * 100) : 0;
+        let convLvl = 'info';
+        let convNote = '';
+        if (blend30 === 0 && pack30 === 0) {
+            convNote = 'ยังไม่มีรอบรับปรุงและบรรจุในรอบ 30 วันล่าสุด';
+        } else if (blend30 > pack30 * 1.25 && blend30 > 0) {
+            convLvl = 'warn';
+            convNote = `รับปรุง 30 วัน (${blend30.toLocaleString()} L) สูงกว่ายอดบรรจุ (${pack30.toLocaleString()} L) — มีน้ำสุราปรุงรอคิวบรรจุค้างถัง ควรเร่งเปิดไลน์บรรจุ`;
+        } else if (pack30 > blend30 * 1.25 && pack30 > 0) {
+            convLvl = 'warn';
+            convNote = `ยอดบรรจุ (${pack30.toLocaleString()} L) เร่งสูงกว่ายอดปรุงใหม่ (${blend30.toLocaleString()} L) — ควรเตรียมแผนผสมปรุงรอบถัดไปไม่ให้ขาดไลน์บรรจุ`;
+        } else {
+            convLvl = 'ok';
+            convNote = `สมดุลสายปรุง (${blend30.toLocaleString()} L) ต่อสายบรรจุ (${pack30.toLocaleString()} L) และอัตราหมุนสต็อก ${turnoverPct.toFixed(1)}%/เดือน อยู่ในเกณฑ์คล่องตัว`;
+        }
+        productionItems.push({
+            category: 'production',
+            level: convLvl,
+            text: `6) อัตราแปลงปรุงสู่สายบรรจุ & รอบหมุน (Turnover ${turnoverPct.toFixed(1)}%): ${convNote}`
+        });
+
+        // --- Category 3: คุณภาพ QC & อายุบ่ม FIFO ---
+        const qualityItems = [];
+        if (analytics.qcIssues > 0) {
+            riskLevel = 'critical';
+            qualityItems.push({ category: 'quality', level: 'critical', text: `7) คุณภาพ QC & อายุบ่ม 14 วัน: พบไม่ผ่านเกณฑ์ QC ${analytics.qcIssues} รายการ (ผ่าน ${analytics.qcPassRate}%) — ต้องปรับปรุงคุณภาพก่อนบรรจุ ขณะที่ 70° บ่มครบ 14 วันอยู่ที่ ${analytics.ready70.toLocaleString()} L` });
+        } else {
+            const readyRatio = v70 > 0 ? (analytics.ready70 / v70) * 100 : 0;
+            if (v70 > 0 && readyRatio < 25 && riskLevel === 'normal') riskLevel = 'watch';
+            qualityItems.push({
+                category: 'quality',
+                level: (v70 > 0 && readyRatio >= 25) ? 'ok' : 'warn',
+                text: `7) คุณภาพ QC & อายุบ่ม 14 วัน: ผล QC ผ่าน ${analytics.qcPassRate}% (${analytics.qcTotal} ครั้ง) • สุรา 70° บ่มครบพร้อมปรุง ${readyRatio.toFixed(1)}% (${analytics.ready70.toLocaleString()} L)`
+            });
+        }
+
+        if (pendingQc24h >= 3) riskLevel = 'critical';
+        else if (pendingQc24h > 0 && riskLevel === 'normal') riskLevel = 'watch';
+        qualityItems.push({
+            category: 'quality',
+            level: pendingQc24h >= 3 ? 'critical' : (pendingQc24h > 0 ? 'warn' : 'ok'),
+            text: pendingQc24h > 0
+                ? `8) วินัยการลงผลตรวจ Lab (Pending QC ≥95% >24 ชม.): พบถังเติมเต็ม ≥95% ค้างลงผล Lab เกิน 24 ชม. จำนวน ${pendingQc24h} ถัง — เร่งกำชับห้อง Lab บันทึกผลก่อนอนุมัติปล่อยจ่าย`
+                : '8) วินัยการลงผลตรวจ Lab (Pending QC ≥95% >24 ชม.): ครบถ้วน 0 ถังค้างลงผลเกิน 24 ชม. ลดความเสี่ยงปล่อยสุราก่อนผ่าน Lab'
+        });
+
+        // --- Category 4: โครงสร้างถัง สัดส่วนดีกรี & ความเสี่ยง ---
+        const fleetItems = [];
         const availTanks = Math.max(0, (analytics.totalTanks || 0) - (analytics.bondedCount || 0) - (analytics.repairCount || 0));
         const emptyTanks = Math.max(0, availTanks - (analytics.activeTankCount || 0));
-        recs.push({
+        fleetItems.push({
+            category: 'fleet',
             level: (analytics.repairCount > 2 || analytics.bondedCount > 2) ? 'warn' : 'info',
-            text: `5) ประสิทธิภาพการใช้ถัง (Tank Fleet): ใช้งานอยู่ ${analytics.activeTankCount}/${availTanks} ถังพร้อมใช้ (ถังว่าง ${emptyTanks} ถัง • ทัณฑ์บน ${analytics.bondedCount} • ซ่อม ${analytics.repairCount}) — ${emptyTanks > 0 && analytics.utilizationPct < 95 ? `มีถังว่าง ${emptyTanks} ถังรองรับการเติมสต็อกให้ถึงเป้า 95%` : 'กระจายสต็อกเต็มกำลังถังที่มีประสิทธิภาพ'}`
+            text: `9) ประสิทธิภาพการใช้ถัง (Tank Fleet): ใช้งานอยู่ ${analytics.activeTankCount}/${availTanks} ถังพร้อมใช้ (ถังว่าง ${emptyTanks} ถัง • ทัณฑ์บน ${analytics.bondedCount} • ซ่อม ${analytics.repairCount}) — ${emptyTanks > 0 && analytics.utilizationPct < 95 ? `มีถังว่าง ${emptyTanks} ถังรองรับการเติมสต็อกให้ถึงเป้า 95%` : 'กระจายสต็อกเต็มกำลังถังที่มีประสิทธิภาพ'}`
         });
 
-        // Topic 6 (New): Blending Continuity & 70° Buffer Coverage
         const runRateText = analytics.daysLeft70 !== null
             ? (analytics.daysLeft70 < 14
                 ? (riskLevel = 'critical', `สำรอง 70° อยู่ได้อีกเพียง ${analytics.daysLeft70} วัน (ต่ำกว่า Safety Stock 14 วัน) ต้องประสานส่งน้ำสุราด่วน`)
                 : `สำรอง 70° รองรับแผนปรุงได้ ${analytics.daysLeft70} วัน (สูงกว่า Safety Stock 14 วัน)`)
             : 'ยังไม่ได้ตั้งค่าแผนใช้วัตถุดิบต่อเดือน แนะนำตั้งค่า Planning Data เพื่อคำนวณวันสำรองอัตโนมัติ';
-        recs.push({
+        fleetItems.push({
+            category: 'fleet',
             level: (analytics.daysLeft70 !== null && analytics.daysLeft70 < 14) ? 'critical' : 'info',
-            text: `6) ความมั่นคงวัตถุดิบปรุง (70° Buffer): ${runRateText} และติดตามรอบ FIFO เก่าก่อนใหม่ลดความเสี่ยงอายุบ่มขาดช่วง`
+            text: `10) ความมั่นคงวัตถุดิบปรุง (70° Buffer): ${runRateText} และติดตามรอบ FIFO เก่าก่อนใหม่ลดความเสี่ยงอายุบ่มขาดช่วง`
         });
 
+        const totV = Number(analytics.totalVol) || 0;
+        const pct70Mix = totV > 0 ? (v70 / totV) * 100 : 0;
+        const pct40Mix = totV > 0 ? ((Number(analytics.v40) || 0) / totV) * 100 : 0;
+        const pctLowMix = totV > 0 ? ((Number(analytics.vLowOther) || 0) / totV) * 100 : 0;
+        const updatedMs = Date.parse(analytics.updatedAt || '');
+        const staleDays = updatedMs > 0 ? Math.floor((Date.now() - updatedMs) / 86400000) : null;
+        const staleWarn = staleDays !== null && staleDays >= 3;
+        if (staleWarn && riskLevel === 'normal') riskLevel = 'watch';
+        fleetItems.push({
+            category: 'fleet',
+            level: staleWarn ? 'warn' : 'info',
+            text: `11) โครงสร้างพอร์ตดีกรี & ความสดใหม่ข้อมูล: สัดส่วน 70° (${pct70Mix.toFixed(1)}%) • 40° (${pct40Mix.toFixed(1)}%) • ดีกรีต่ำ 35°/30°/28° (${pctLowMix.toFixed(1)}%) | ${staleWarn ? `ข้อมูลไม่อัปเดตมาแล้ว ${staleDays} วัน ควรติดตามฝ่ายคลังลงบัญชีประจำวัน` : `ข้อมูลล่าสุดอัปเดตปกติ (${staleDays !== null ? (staleDays === 0 ? 'วันนี้' : `${staleDays} วันที่แล้ว`) : 'ล่าสุด'})`}`
+        });
+
+        categories.push(
+            { id: 'policy', label: 'นโยบายสต็อก & พื้นที่คลัง', icon: 'fa-warehouse', badgeCls: 'bg-blue-50 text-blue-700 border-blue-200', items: policyItems },
+            { id: 'production', label: 'การผลิต ยอดบรรจุ & อันดับ Top-N', icon: 'fa-industry', badgeCls: 'bg-emerald-50 text-emerald-700 border-emerald-200', items: productionItems },
+            { id: 'quality', label: 'คุณภาพ QC & อายุบ่ม FIFO', icon: 'fa-flask', badgeCls: 'bg-indigo-50 text-indigo-700 border-indigo-200', items: qualityItems },
+            { id: 'fleet', label: 'โครงสร้างถัง สัดส่วนดีกรี & ความเสี่ยง', icon: 'fa-shield-alt', badgeCls: 'bg-amber-50 text-amber-800 border-amber-200', items: fleetItems }
+        );
+
+        const recs = [...policyItems, ...productionItems, ...qualityItems, ...fleetItems];
         const headline = riskLevel === 'critical'
             ? 'ต่ำกว่านโยบาย ≥95% หรือมีประเด็น QC/Buffer — ต้องเร่งเติมสต็อกและแก้ไขเร่งด่วน'
             : (riskLevel === 'watch'
-                ? 'อยู่ระหว่างติดตามให้เข้าเกณฑ์นโยบายคงโรง ≥95% และสมดุลรายโซน'
-                : 'ผ่านนโยบายสต็อกคงโรง ≥95% และคุณภาพ QC อยู่ในเกณฑ์ดีเยี่ยม');
+                ? 'อยู่ระหว่างติดตามให้เข้าเกณฑ์นโยบายคงโรง ≥95% คุณภาพ และสมดุลรายโซน'
+                : 'ผ่านนโยบายสต็อกคงโรง ≥95% การผลิตสมดุล และคุณภาพ QC อยู่ในเกณฑ์ดีเยี่ยม');
 
-        return { riskLevel, headline, recommendations: recs };
+        return { riskLevel, headline, recommendations: recs, categories };
+    }
+
+    async function ensureCloudUserDocExists(factoryId) {
+        if (!fbDb || !fbAuth || !fbAuth.currentUser || !factoryId) return false;
+        try {
+            const uRef = fbDb.collection('users').doc(factoryId);
+            let uSnap;
+            try { uSnap = await uRef.get({ source: 'server' }); }
+            catch (sErr) { uSnap = await uRef.get(); }
+            if (uSnap.exists) return true;
+            const session = getSession();
+            if (!session || (session.username !== factoryId && session.role !== 'admin')) return false;
+            const reg = getLocalUsersRegistry();
+            const meta = reg[factoryId] || {};
+            const nowIso = new Date().toISOString();
+            const fallbackSalt = meta.salt || generateSalt(factoryId);
+            const fallbackHash = meta.passwordHash || hashPasswordWithSalt(factoryId, fallbackSalt);
+            await uRef.set({
+                username: factoryId,
+                displayName: (String(meta.displayName || factoryId).trim().slice(0, 100) || factoryId),
+                role: meta.role === 'admin' ? 'admin' : 'factory',
+                salt: fallbackSalt,
+                passwordHash: fallbackHash,
+                authVersion: Number(meta.authVersion) || 1,
+                authEmail: meta.authEmail || (session.username === factoryId ? (fbAuth.currentUser.email || buildAuthEmail(factoryId, 1)) : buildAuthEmail(factoryId, 1)),
+                authUid: session.username === factoryId ? (fbAuth.currentUser.uid || '') : (meta.authUid || ''),
+                active: meta.active !== false,
+                createdAt: meta.createdAt || nowIso,
+                updatedAt: nowIso,
+                createdBy: meta.createdBy || session.username || 'system'
+            });
+            return true;
+        } catch (e) {
+            return false;
+        }
     }
 
     async function loadFactoryFromCloud(factoryId) {
@@ -1392,14 +1643,18 @@
             cloudStatus = 'syncing';
             updateCloudBadgeUI();
             const docRef = fbDb.collection('factories').doc(factoryId);
-            const snap = await docRef.get();
+            let snap;
+            try { snap = await docRef.get({ source: 'server' }); }
+            catch (sErr) { snap = await docRef.get(); }
             if (!snap.exists) {
                 cloudStatus = 'online';
                 updateCloudBadgeUI();
                 return readTenantLocalPayload(factoryId);
             }
             const docData = snap.data() || {};
-            const chunksSnap = await docRef.collection('chunks').orderBy('chunkIndex').get();
+            let chunksSnap;
+            try { chunksSnap = await docRef.collection('chunks').orderBy('chunkIndex').get({ source: 'server' }); }
+            catch (cErr) { chunksSnap = await docRef.collection('chunks').orderBy('chunkIndex').get(); }
             let txs = [];
             chunksSnap.forEach(c => {
                 if (c.id.startsWith('snap_')) return;
@@ -1411,16 +1666,32 @@
                 txs = docData.transactions;
             }
 
+            const inferredInitialized = Boolean(
+                docData.initialized === true
+                || txs.length > 0
+                || (docData.summary && Number(docData.summary.txCount) > 0)
+                || (docData.tankConfig && Object.keys(docData.tankConfig).length > 0)
+                || (Array.isArray(docData.tankSettingsHistory) && docData.tankSettingsHistory.length > 0)
+            );
+            if (inferredInitialized && docData.initialized !== true) {
+                docRef.update({ initialized: true }).catch(() => { });
+            }
+
+            const mergedCustomTanks = ensureReferencedTanksInList(
+                (Array.isArray(docData.customTanks) && docData.customTanks.length) ? docData.customTanks : JSON.parse(JSON.stringify(UNIFIED_DEFAULT_TANKS)),
+                txs
+            );
+
             const cloudPayload = {
                 username: factoryId,
                 factoryName: docData.factoryName || factoryId,
-                initialized: !!docData.initialized,
+                initialized: inferredInitialized,
                 updatedAt: docData.updatedAt || new Date().toISOString(),
                 liquor_transactions: txs,
                 tank_config: docData.tankConfig || {},
                 active_tanks: docData.activeTanks || { high: null, deg40: null, nextHigh: null, next40: null },
                 planning_data: docData.planningData || { highSupply: 0, highUsage: 0, deg40Usage: 0, deg35Usage: 0, deg30Usage: 0, deg28Usage: 0 },
-                custom_tanks: (Array.isArray(docData.customTanks) && docData.customTanks.length) ? docData.customTanks : JSON.parse(JSON.stringify(UNIFIED_DEFAULT_TANKS)),
+                custom_tanks: mergedCustomTanks,
                 custom_buildings: docData.customBuildings || JSON.parse(JSON.stringify(UNIFIED_DEFAULT_BUILDINGS)),
                 global_settings: docData.globalSettings || { cap40: 1568000, cap35: 1568000, cap30: 1568000, cap28: 1568000, cap70: 0 },
                 tank_settings_history: Array.isArray(docData.tankSettingsHistory) ? docData.tankSettingsHistory : [],
@@ -1435,8 +1706,11 @@
             cloudStatusNote = 'ซิงค์ข้อมูลออนไลน์สำเร็จ';
             updateCloudBadgeUI();
 
-            // If local tenant has uninitialized=false and cloud is initialized, always prefer cloud;
-            // if local is strictly newer AND initialized locally, push local diff on next save.
+            // Fresh device (localPayload.initialized === false) & cloud initialized => always use cloud data
+            if (cloudPayload.initialized && !localPayload.initialized) {
+                writeTenantLocalPayload(factoryId, cloudPayload);
+                return cloudPayload;
+            }
             if (!cloudPayload.initialized && localPayload.initialized) {
                 return localPayload;
             }
@@ -1473,23 +1747,36 @@
             updateCloudBadgeUI();
             const summary = computeFactoryAnalytics(payload);
             const docRef = fbDb.collection('factories').doc(factoryId);
-
-            await docRef.set({
+            const safeFactoryName = String(payload.factoryName || factoryId).trim().slice(0, 120) || factoryId;
+            const safeUpdatedBy = String(session ? session.username : factoryId).trim().slice(0, 64) || factoryId;
+            const plainObj = (v) => (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+            const factoryWriteData = {
                 username: factoryId,
-                factoryName: payload.factoryName || factoryId,
+                factoryName: safeFactoryName,
                 initialized: !!payload.initialized,
                 updatedAt: payload.updatedAt,
-                updatedBy: session ? session.username : factoryId,
+                updatedBy: safeUpdatedBy,
                 summary,
-                tankConfig: payload.tank_config || {},
-                activeTanks: payload.active_tanks || {},
-                planningData: payload.planning_data || {},
-                customTanks: payload.custom_tanks || UNIFIED_DEFAULT_TANKS,
-                customBuildings: payload.custom_buildings || UNIFIED_DEFAULT_BUILDINGS,
-                globalSettings: payload.global_settings || {},
-                tankSettingsHistory: payload.tank_settings_history || [],
-                customQCLimits: payload.custom_qc_limits || {}
-            });
+                tankConfig: plainObj(payload.tank_config),
+                activeTanks: (payload.active_tanks && typeof payload.active_tanks === 'object') ? payload.active_tanks : {},
+                planningData: plainObj(payload.planning_data),
+                customTanks: Array.isArray(payload.custom_tanks) ? payload.custom_tanks : UNIFIED_DEFAULT_TANKS,
+                customBuildings: plainObj(payload.custom_buildings || UNIFIED_DEFAULT_BUILDINGS),
+                globalSettings: plainObj(payload.global_settings),
+                tankSettingsHistory: Array.isArray(payload.tank_settings_history) ? payload.tank_settings_history : [],
+                customQCLimits: plainObj(payload.custom_qc_limits)
+            };
+
+            try {
+                await docRef.set(factoryWriteData);
+            } catch (writeErr) {
+                if (writeErr && writeErr.code === 'permission-denied') {
+                    await ensureCloudUserDocExists(factoryId);
+                    await docRef.set(factoryWriteData);
+                } else {
+                    throw writeErr;
+                }
+            }
 
             // Chunk transactions so Firestore 1 MiB document cap is never reached
             const txs = Array.isArray(payload.liquor_transactions) ? payload.liquor_transactions : [];
@@ -1563,6 +1850,7 @@
             if (Date.parse(d.updatedAt || '0') > Date.parse(localMeta.updatedAt || '0') + 1500) {
                 const fresh = await loadFactoryFromCloud(factoryId);
                 applyPayloadToWorkingLocalStorage(fresh);
+                if (fresh && fresh.initialized) closeModal('firstTimeSetupModal');
                 triggerHostPageReload();
                 refreshMobileShellData();
             }
@@ -2053,7 +2341,7 @@
                 if (!fId) return;
                 const snap = readWorkingPayload(fId);
                 writeTenantLocalPayload(fId, snap);
-                if (cloudSyncTimer || pendingDiffBeforeMap[fId]) {
+                if (snap.initialized && (cloudSyncTimer || pendingDiffBeforeMap[fId])) {
                     if (cloudSyncTimer) { clearTimeout(cloudSyncTimer); cloudSyncTimer = null; }
                     saveFactoryToCloudNow(fId, snap);
                     flushPendingWorkspaceDiff(fId);
@@ -2420,10 +2708,27 @@
         // Establish Firebase Email/Password Auth session first so Firestore rules allow /users read
         const authRes = await authenticateFirebaseUser(username, plainPassword, localRecord?.authVersion || 1, localRecord);
 
+        const explicitAuthReject = !authRes.ok && cloudAvailable && fbAuth && [
+            'auth/wrong-password',
+            'auth/invalid-credential',
+            'auth/invalid-login-credentials',
+            'auth/user-disabled',
+            'auth/too-many-requests'
+        ].includes(authRes.error);
+        if (explicitAuthReject) {
+            throw new Error(authRes.error === 'auth/too-many-requests'
+                ? 'พยายามเข้าสู่ระบบผิดหลายครั้ง กรุณารอสักครู่แล้วลองใหม่อีกครั้ง'
+                : (authRes.error === 'auth/user-disabled'
+                    ? 'บัญชีผู้ใช้งานนี้ถูกระงับการใช้งาน'
+                    : 'ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง'));
+        }
+
         let cloudUserDoc = null;
         if (fbDb && authRes.ok) {
             try {
-                const snap = await fbDb.collection('users').doc(username).get();
+                let snap;
+                try { snap = await fbDb.collection('users').doc(username).get({ source: 'server' }); }
+                catch (sErr) { snap = await fbDb.collection('users').doc(username).get(); }
                 if (snap.exists) cloudUserDoc = snap.data();
             } catch (e) {
                 console.info('User doc fetch skipped:', e.code || e.message);
@@ -2442,8 +2747,31 @@
 
         const candidateHash = hashPasswordWithSalt(plainPassword, effectiveUser.salt);
         if (candidateHash !== effectiveUser.passwordHash) {
-            if (fbAuth && authRes.ok) { try { await fbAuth.signOut(); } catch (e) { } }
-            throw new Error('ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง');
+            // Auto-heal split-brain accounts: Firebase Auth already proved password validity
+            if (authRes.ok && (authRes.mode === 'email' || authRes.mode === 'email-versioned')) {
+                const healedSalt = generateSalt(username);
+                const healedHash = hashPasswordWithSalt(plainPassword, healedSalt);
+                const healIso = new Date().toISOString();
+                effectiveUser.salt = healedSalt;
+                effectiveUser.passwordHash = healedHash;
+                effectiveUser.authUid = authRes.uid || effectiveUser.authUid || '';
+                effectiveUser.updatedAt = healIso;
+                if (fbDb && cloudUserDoc) {
+                    try {
+                        await fbDb.collection('users').doc(username).update({
+                            salt: healedSalt,
+                            passwordHash: healedHash,
+                            authUid: authRes.uid || cloudUserDoc.authUid || '',
+                            updatedAt: healIso
+                        });
+                    } catch (healErr) {
+                        console.warn('User credential heal note:', healErr.code || healErr.message);
+                    }
+                }
+            } else {
+                if (fbAuth && authRes.ok) { try { await fbAuth.signOut(); } catch (e) { } }
+                throw new Error('ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง');
+            }
         }
 
         // Upgrade versioned Email/Password Firebase Auth when cloud doc carries newer authVersion
@@ -2488,7 +2816,7 @@
                     if (!cloudUserDoc.authVersion) {
                         userPatch.authVersion = Number(effectiveUser.authVersion) || 1;
                     }
-                    await fbDb.collection('users').doc(username).set(userPatch, { merge: true });
+                    await fbDb.collection('users').doc(username).update(userPatch);
                 } else {
                     const userPayload = {
                         username: effectiveUser.username,
@@ -2535,7 +2863,10 @@
             cloudSyncTimer = null;
         }
         if (activeFactory) {
-            await saveFactoryToCloudNow(activeFactory, readWorkingPayload(activeFactory));
+            const workingSnap = readWorkingPayload(activeFactory);
+            if (workingSnap.initialized) {
+                await saveFactoryToCloudNow(activeFactory, workingSnap);
+            }
         }
         if (unsubscribeFactorySnap) {
             try { unsubscribeFactorySnap(); } catch (e) { }
@@ -2585,10 +2916,16 @@
 
         const reg = getLocalUsersRegistry();
         let userDoc = reg[session.username];
-        if (fbDb && fbAuth?.currentUser) {
+        let cloudDocExisted = false;
+        if (fbDb && fbAuth?.currentUser && !fbAuth.currentUser.isAnonymous) {
             try {
-                const snap = await fbDb.collection('users').doc(session.username).get();
-                if (snap.exists) userDoc = snap.data();
+                let snap;
+                try { snap = await fbDb.collection('users').doc(session.username).get({ source: 'server' }); }
+                catch (sErr) { snap = await fbDb.collection('users').doc(session.username).get(); }
+                if (snap.exists) {
+                    userDoc = snap.data();
+                    cloudDocExisted = true;
+                }
             } catch (e) { }
         }
         if (!userDoc) throw new Error('ไม่พบข้อมูลบัญชี');
@@ -2598,16 +2935,82 @@
             throw new Error('รหัสผ่านปัจจุบันไม่ถูกต้อง');
         }
 
+        const oldAuthPass = deriveFirebaseAuthSecret(session.username, currentPwd);
         const newSalt = generateSalt(session.username);
         const newHash = hashPasswordWithSalt(newPwd, newSalt);
         const newAuthPass = deriveFirebaseAuthSecret(session.username, newPwd);
+        const nowIso = new Date().toISOString();
 
-        // Update Firebase Auth user password if signed in with non-anonymous email auth
-        if (fbAuth && fbAuth.currentUser && !fbAuth.currentUser.isAnonymous) {
+        // Ensure live Firebase Auth session & re-authenticate before updating password (prevents auth/requires-recent-login)
+        let authUpdated = false;
+        if (fbAuth && cloudAvailable) {
+            if (!fbAuth.currentUser || fbAuth.currentUser.isAnonymous) {
+                const loginRes = await authenticateFirebaseUser(session.username, currentPwd, userDoc.authVersion || 1, userDoc);
+                if (!loginRes.ok || !fbAuth.currentUser || fbAuth.currentUser.isAnonymous) {
+                    throw new Error('ไม่สามารถยืนยันตัวตนกับระบบกลางได้ กรุณาตรวจสอบอินเทอร์เน็ตหรือให้ผู้ดูแลรีเซ็ตรหัสผ่าน');
+                }
+            }
+            const curEmail = fbAuth.currentUser.email || buildAuthEmail(session.username, userDoc.authVersion || 1);
+            try {
+                if (typeof firebase !== 'undefined' && firebase.auth?.EmailAuthProvider?.credential) {
+                    const cred = firebase.auth.EmailAuthProvider.credential(curEmail, oldAuthPass);
+                    await fbAuth.currentUser.reauthenticateWithCredential(cred);
+                }
+            } catch (reauthErr) {
+                const code = reauthErr?.code || '';
+                if (code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/invalid-login-credentials') {
+                    throw new Error('รหัสผ่านปัจจุบันไม่ตรงกับฐานข้อมูลกลาง กรุณาติดต่อผู้ดูแลระบบรีเซ็ตรหัสผ่าน');
+                }
+                throw new Error('ไม่สามารถยืนยันสิทธิ์ก่อนเปลี่ยนรหัสผ่านได้ (' + (code || reauthErr.message) + ')');
+            }
             try {
                 await fbAuth.currentUser.updatePassword(newAuthPass);
-            } catch (e) {
-                console.info('Firebase Auth updatePassword skipped:', e.code);
+                authUpdated = true;
+            } catch (upErr) {
+                throw new Error('อัปเดตรหัสผ่านเข้าระบบกลางไม่สำเร็จ (' + (upErr?.code || upErr?.message || 'error') + ')');
+            }
+        }
+
+        // Sync ONLY allowed self-update fields to Firestore /users/{username}; rollback Auth password if Firestore write fails
+        if (fbDb && fbAuth?.currentUser && !fbAuth.currentUser.isAnonymous) {
+            const userRef = fbDb.collection('users').doc(session.username);
+            if (!cloudDocExisted) {
+                try {
+                    const checkSnap = await userRef.get({ source: 'server' });
+                    cloudDocExisted = !!checkSnap.exists;
+                } catch (e) { }
+            }
+            try {
+                if (cloudDocExisted) {
+                    await userRef.update({
+                        salt: newSalt,
+                        passwordHash: newHash,
+                        authUid: fbAuth.currentUser.uid,
+                        updatedAt: nowIso,
+                        passwordChangedByUserAt: nowIso
+                    });
+                } else {
+                    await userRef.set({
+                        username: session.username,
+                        displayName: (String(userDoc.displayName || session.username).trim().slice(0, 100) || session.username),
+                        role: userDoc.role === 'admin' ? 'admin' : 'factory',
+                        salt: newSalt,
+                        passwordHash: newHash,
+                        authUid: fbAuth.currentUser.uid,
+                        authEmail: fbAuth.currentUser.email || buildAuthEmail(session.username, userDoc.authVersion || 1),
+                        authVersion: Number(userDoc.authVersion) || 1,
+                        active: userDoc.active !== false,
+                        createdAt: userDoc.createdAt || nowIso,
+                        updatedAt: nowIso,
+                        createdBy: userDoc.createdBy || 'system',
+                        passwordChangedByUserAt: nowIso
+                    });
+                }
+            } catch (dbErr) {
+                if (authUpdated) {
+                    try { await fbAuth.currentUser.updatePassword(oldAuthPass); } catch (rbErr) { }
+                }
+                throw new Error('ไม่สามารถบันทึกรหัสผ่านใหม่ลงฐานข้อมูลกลางได้ กรุณาลองใหม่อีกครั้ง (' + (dbErr?.code || dbErr?.message || 'sync-failed') + ')');
             }
         }
 
@@ -2615,19 +3018,13 @@
             ...userDoc,
             salt: newSalt,
             passwordHash: newHash,
-            updatedAt: new Date().toISOString(),
-            passwordChangedByUserAt: new Date().toISOString()
+            authUid: fbAuth?.currentUser?.uid || userDoc.authUid || '',
+            updatedAt: nowIso,
+            passwordChangedByUserAt: nowIso
         };
         reg[session.username] = updatedDoc;
         saveLocalUsersRegistry(reg);
 
-        if (fbDb && fbAuth?.currentUser) {
-            try {
-                await fbDb.collection('users').doc(session.username).set(updatedDoc, { merge: true });
-            } catch (e) {
-                console.info('Cloud user update skipped:', e.code || e.message);
-            }
-        }
         await writeAuditLog('PASSWORD_CHANGE_SELF', session.username, {
             category: 'auth',
             actionLabel: 'เปลี่ยนรหัสผ่านเอง',
@@ -2682,7 +3079,7 @@
             active: true,
             createdAt: existing?.createdAt || new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            createdBy: session.username
+            createdBy: existing?.createdBy || session.username
         };
 
         reg[username] = userDoc;
@@ -2690,7 +3087,23 @@
 
         if (fbDb && fbAuth?.currentUser) {
             try {
-                await fbDb.collection('users').doc(username).set(userDoc, { merge: true });
+                const uRef = fbDb.collection('users').doc(username);
+                const uSnap = await uRef.get();
+                if (uSnap.exists) {
+                    await uRef.update({
+                        displayName: userDoc.displayName,
+                        role: userDoc.role,
+                        salt: userDoc.salt,
+                        passwordHash: userDoc.passwordHash,
+                        authVersion: userDoc.authVersion,
+                        authEmail: userDoc.authEmail,
+                        authUid: userDoc.authUid,
+                        active: true,
+                        updatedAt: userDoc.updatedAt
+                    });
+                } else {
+                    await uRef.set(userDoc);
+                }
                 // Ensure factory doc exists for factory users
                 if (userDoc.role === 'factory') {
                     const fRef = fbDb.collection('factories').doc(username);
@@ -2911,22 +3324,88 @@
             if (activeNow === u.username) {
                 const livePayload = readWorkingPayload(u.username);
                 analytics = computeFactoryAnalytics(livePayload);
-            } else if (cDoc && cDoc.summary) {
-                analytics = {
-                    ...cDoc.summary,
-                    username: u.username,
-                    factoryName: u.displayName || cDoc.factoryName || u.username,
-                    initialized: !!cDoc.initialized,
-                    updatedAt: cDoc.updatedAt || null
-                };
+                if (cDoc && fbDb && fbAuth?.currentUser && Number(cDoc.summary?.packTotal || -1) !== Number(analytics.packTotal)) {
+                    fbDb.collection('factories').doc(u.username).update({ summary: analytics, customTanks: livePayload.custom_tanks }).catch(() => { });
+                }
+            } else if (cDoc) {
+                let computedFromChunks = null;
+                if (fbDb && fbAuth?.currentUser) {
+                    try {
+                        const fullCloud = await loadFactoryFromCloud(u.username);
+                        if (fullCloud && Array.isArray(fullCloud.liquor_transactions) && fullCloud.liquor_transactions.length > 0) {
+                            computedFromChunks = computeFactoryAnalytics(fullCloud);
+                            computedFromChunks.factoryName = u.displayName || cDoc.factoryName || computedFromChunks.factoryName;
+                            if (!cDoc.summary || Number(cDoc.summary.packTotal || 0) !== Number(computedFromChunks.packTotal) || Number(cDoc.summary.pack30d || 0) !== Number(computedFromChunks.pack30d)) {
+                                fbDb.collection('factories').doc(u.username).update({ summary: computedFromChunks, customTanks: fullCloud.custom_tanks }).catch(() => { });
+                            }
+                        }
+                    } catch (e) { }
+                }
+                if (computedFromChunks) {
+                    analytics = computedFromChunks;
+                } else if (cDoc.summary) {
+                    analytics = {
+                        ...cDoc.summary,
+                        username: u.username,
+                        factoryName: u.displayName || cDoc.factoryName || u.username,
+                        initialized: !!(cDoc.initialized || (cDoc.summary && Number(cDoc.summary.txCount) > 0)),
+                        updatedAt: cDoc.updatedAt || null
+                    };
+                } else {
+                    const localPayload = readTenantLocalPayload(u.username);
+                    analytics = computeFactoryAnalytics(localPayload);
+                    analytics.factoryName = u.displayName || analytics.factoryName;
+                }
             } else {
                 const localPayload = readTenantLocalPayload(u.username);
                 analytics = computeFactoryAnalytics(localPayload);
                 analytics.factoryName = u.displayName || analytics.factoryName;
             }
-            const insight = generateFactoryRecommendations(analytics);
-            results.push({ user: u, analytics, insight });
+            const numKeys = [
+                'txCount', 'totalVol', 'totalCap', 'cap70', 'cap40', 'utilizationPct', 'util70Pct', 'util40Pct',
+                'v70', 'v40', 'v40Total', 'v35', 'v30', 'v28', 'vLowOther', 'freeCap70', 'freeCap40', 'freeCapTotal',
+                'shortfallTo95', 'shortfall70To95', 'shortfall40To95', 'ready70', 'aging70', 'bondedCount', 'repairCount',
+                'activeTankCount', 'totalTanks', 'qcTotal', 'qcIssues', 'in30d', 'out30d', 'distill30d', 'blend30d',
+                'blendOut30d', 'pendingQc24hCount'
+            ];
+            numKeys.forEach(k => { analytics[k] = Number(analytics[k]) || 0; });
+            if (analytics.qcPassRate === undefined || analytics.qcPassRate === null) {
+                analytics.qcPassRate = analytics.qcTotal > 0 ? Number((((analytics.qcTotal - analytics.qcIssues) / analytics.qcTotal) * 100).toFixed(1)) : 100;
+            } else {
+                analytics.qcPassRate = Number(analytics.qcPassRate) || 0;
+            }
+            if (!analytics.utilizationPct && analytics.totalCap > 0) {
+                analytics.utilizationPct = Number(((analytics.totalVol / analytics.totalCap) * 100).toFixed(1));
+            }
+            analytics.prod30d = Number(analytics.prod30d !== undefined ? analytics.prod30d : analytics.in30d) || 0;
+            analytics.prodTotal = Number(analytics.prodTotal !== undefined ? analytics.prodTotal : analytics.prod30d) || 0;
+            analytics.pack30d = Number(analytics.pack30d !== undefined ? analytics.pack30d : analytics.out30d) || 0;
+            analytics.packTotal = Number(analytics.packTotal !== undefined ? analytics.packTotal : analytics.pack30d) || 0;
+            results.push({ user: u, analytics, insight: null });
         }
+
+        // Cross-factory Top-N Production & Bottling ranking
+        const totalProd30Net = results.reduce((s, r) => s + (r.analytics.prod30d || 0), 0);
+        const totalPack30Net = results.reduce((s, r) => s + (r.analytics.pack30d || 0), 0);
+        const byProd30 = [...results].sort((a, b) => (b.analytics.prod30d - a.analytics.prod30d) || (b.analytics.prodTotal - a.analytics.prodTotal));
+        const byPack30 = [...results].sort((a, b) => (b.analytics.pack30d - a.analytics.pack30d) || (b.analytics.packTotal - a.analytics.packTotal));
+        const byProdAll = [...results].sort((a, b) => b.analytics.prodTotal - a.analytics.prodTotal);
+        const byPackAll = [...results].sort((a, b) => b.analytics.packTotal - a.analytics.packTotal);
+
+        results.forEach(r => {
+            const uname = r.analytics.username;
+            const rankCtx = {
+                totalFactories: results.length,
+                prodRank30d: byProd30.findIndex(x => x.analytics.username === uname) + 1,
+                packRank30d: byPack30.findIndex(x => x.analytics.username === uname) + 1,
+                prodRankAll: byProdAll.findIndex(x => x.analytics.username === uname) + 1,
+                packRankAll: byPackAll.findIndex(x => x.analytics.username === uname) + 1,
+                prodSharePct: totalProd30Net > 0 ? (r.analytics.prod30d / totalProd30Net) * 100 : 0,
+                packSharePct: totalPack30Net > 0 ? (r.analytics.pack30d / totalPack30Net) * 100 : 0
+            };
+            r.rank = rankCtx;
+            r.insight = generateFactoryRecommendations(r.analytics, rankCtx);
+        });
         return results;
     }
 
@@ -2971,7 +3450,10 @@
                 clearTimeout(cloudSyncTimer);
                 cloudSyncTimer = null;
             }
-            if (currentId) await saveFactoryToCloudNow(currentId, readWorkingPayload(currentId));
+            if (currentId) {
+                const curSnap = readWorkingPayload(currentId);
+                if (curSnap.initialized) await saveFactoryToCloudNow(currentId, curSnap);
+            }
             sessionStorage.removeItem('qc_power_user');
             if (typeof window.lockQCPowerUser === 'function') {
                 try { window.lockQCPowerUser(true); } catch (e) { }
@@ -3273,7 +3755,7 @@
             </div>
         </div>
 
-        <div id="adminCompareOverview" class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mb-4 sm:mb-5"></div>
+        <div id="adminCompareOverview" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3 mb-4 sm:mb-5"></div>
 
         <div class="grid grid-cols-1 xl:grid-cols-12 gap-4 mb-5">
             <div class="xl:col-span-7 stockms-compare-table-scroll rounded-2xl border border-slate-200 dark:border-slate-700 bg-white">
@@ -3295,7 +3777,7 @@
                     <tbody id="adminCompareTableBody" class="divide-y divide-slate-100 dark:divide-slate-800"></tbody>
                 </table>
             </div>
-            <div class="xl:col-span-5 p-3.5 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40">
+            <div class="xl:col-span-5 p-3.5 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 min-w-0">
                 <div class="text-xs font-extrabold mb-1 text-slate-700 dark:text-slate-200 flex items-center justify-between gap-2 flex-wrap">
                     <span><i class="fas fa-chart-bar text-blue-600 mr-1.5"></i> ปริมาณสุรารายโรงงาน vs ลิมิต Working Volume</span>
                     <span class="text-[10px] font-bold text-slate-600 bg-white px-2 py-0.5 rounded-full border border-slate-200">เส้นขีดบน = ลิมิตความจุใช้งาน</span>
@@ -3304,9 +3786,64 @@
             </div>
         </div>
 
-        <div class="mb-2.5 text-xs sm:text-sm font-extrabold text-slate-800 dark:text-slate-100 flex flex-wrap items-center justify-between gap-2">
-            <span class="flex items-center gap-2"><i class="fas fa-lightbulb text-amber-500"></i> บทสรุปวิเคราะห์และคำแนะนำรายโรงงาน (Executive Insights)</span>
+        <!-- Top-N Production & Bottling Ranking Visualization -->
+        <div class="p-3.5 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white mb-5">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div>
+                    <div class="text-xs sm:text-sm font-extrabold text-slate-800 flex items-center gap-1.5">
+                        <i class="fas fa-trophy text-amber-500"></i>
+                        <span>จัดอันดับ Top-N โรงงาน: ยอดผลิต (Production) &amp; ยอดบรรจุ (Bottling)</span>
+                    </div>
+                    <p class="text-[11px] text-slate-500">เปรียบเทียบปริมาณรับกลั่น/รับปรุง กับยอดบรรจุจ่ายออก เรียงลำดับจากมากไปน้อย</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-1.5" id="adminTopRankControls">
+                    <div class="inline-flex rounded-xl bg-slate-100 p-0.5 border border-slate-200">
+                        <button type="button" data-toprank-metric="prod" onclick="window.StockMSUI.setAdminTopRankMode('prod', null)" class="px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-emerald-600 text-white">เรียงยอดผลิต</button>
+                        <button type="button" data-toprank-metric="pack" onclick="window.StockMSUI.setAdminTopRankMode('pack', null)" class="px-2.5 py-1 rounded-lg text-[11px] font-bold text-slate-600">เรียงยอดบรรจุ</button>
+                    </div>
+                    <div class="inline-flex rounded-xl bg-slate-100 p-0.5 border border-slate-200">
+                        <button type="button" data-toprank-period="30d" onclick="window.StockMSUI.setAdminTopRankMode(null, '30d')" class="px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-slate-800 text-white">30 วันล่าสุด</button>
+                        <button type="button" data-toprank-period="all" onclick="window.StockMSUI.setAdminTopRankMode(null, 'all')" class="px-2.5 py-1 rounded-lg text-[11px] font-bold text-slate-600">สะสมทั้งหมด</button>
+                    </div>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+                <div class="lg:col-span-7 p-3 rounded-2xl bg-slate-50/70 border border-slate-200/80 min-w-0">
+                    <div class="h-64 sm:h-72 relative"><canvas id="adminTopRankCanvas"></canvas></div>
+                </div>
+                <div class="lg:col-span-5 space-y-2 max-h-72 overflow-y-auto pr-1 min-w-0" id="adminTopRankList"></div>
+            </div>
+        </div>
+
+        <!-- Additional Executive Visualizations (Policy / FIFO / QC Compliance & Network Degree Mix) -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-5">
+            <div class="lg:col-span-7 p-3.5 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 min-w-0">
+                <div class="text-xs font-extrabold text-slate-700 mb-1 flex items-center justify-between gap-2 flex-wrap">
+                    <span><i class="fas fa-tasks text-indigo-600 mr-1.5"></i> ดัชนีความพร้อมรายโรงงาน (% คงคลัง vs % บ่ม 14 วัน vs % QC ผ่าน)</span>
+                    <span class="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">เส้นประแดง = นโยบาย 95%</span>
+                </div>
+                <div class="h-60 sm:h-64 relative"><canvas id="adminPolicyMetricsCanvas"></canvas></div>
+            </div>
+            <div class="lg:col-span-5 p-3.5 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 min-w-0 flex flex-col justify-between">
+                <div class="text-xs font-extrabold text-slate-700 mb-1 flex items-center justify-between gap-2 flex-wrap">
+                    <span><i class="fas fa-chart-pie text-amber-600 mr-1.5"></i> สัดส่วนพอร์ตดีกรีสุรารวมเครือข่าย</span>
+                    <span class="text-[10px] font-bold text-slate-500">70° / 40° / 35° / 30° / 28°</span>
+                </div>
+                <div class="h-44 sm:h-48 relative"><canvas id="adminDegreeMixCanvas"></canvas></div>
+                <div id="adminDegreeMixLegend" class="grid grid-cols-2 sm:grid-cols-3 gap-1.5 mt-2 text-[10px] font-bold"></div>
+            </div>
+        </div>
+
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <span class="text-xs sm:text-sm font-extrabold text-slate-800 dark:text-slate-100 flex items-center gap-2"><i class="fas fa-lightbulb text-amber-500"></i> บทสรุปวิเคราะห์และคำแนะนำรายโรงงาน (Executive Insights แยกตามหมวดหมู่)</span>
             <span class="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">นโยบายบริษัท: สต็อกคงโรงไม่ต่ำกว่า 95%</span>
+        </div>
+        <div id="adminInsightCategoryTabs" class="flex flex-wrap gap-1.5 mb-3">
+            <button type="button" data-insight-cat="ALL" onclick="window.StockMSUI.setAdminInsightCategory('ALL')" class="px-3 py-1.5 rounded-xl bg-slate-800 text-white text-[11px] font-extrabold">ทุกหมวด (11 ด้าน)</button>
+            <button type="button" data-insight-cat="policy" onclick="window.StockMSUI.setAdminInsightCategory('policy')" class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 text-[11px] font-bold">นโยบายสต็อก &amp; คลัง</button>
+            <button type="button" data-insight-cat="production" onclick="window.StockMSUI.setAdminInsightCategory('production')" class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 text-[11px] font-bold">ผลิต บรรจุ &amp; Top-N</button>
+            <button type="button" data-insight-cat="quality" onclick="window.StockMSUI.setAdminInsightCategory('quality')" class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 text-[11px] font-bold">คุณภาพ QC &amp; บ่ม FIFO</button>
+            <button type="button" data-insight-cat="fleet" onclick="window.StockMSUI.setAdminInsightCategory('fleet')" class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 text-[11px] font-bold">ถัง ดีกรี &amp; ความเสี่ยง</button>
         </div>
         <div id="adminFactoryInsightsGrid" class="grid grid-cols-1 lg:grid-cols-2 gap-3.5"></div>
     </div>
@@ -3905,7 +4442,11 @@
                         const beforePayload = clonePayloadSnapshot(readTenantLocalPayload(activeFactory));
                         writeTenantLocalPayload(activeFactory, payload);
                         applyPayloadToWorkingLocalStorage(payload);
-                        await saveFactoryToCloudNow(activeFactory, payload);
+                        if (fbDb && fbAuth?.currentUser) await ensureCloudUserDocExists(activeFactory);
+                        let savedCloud = await saveFactoryToCloudNow(activeFactory, payload);
+                        if (!savedCloud && fbDb && fbAuth?.currentUser) {
+                            savedCloud = await saveFactoryToCloudNow(activeFactory, payload);
+                        }
                         await writeAuditLog('FIRST_TIME_IMPORT', activeFactory, {
                             category: 'data',
                             actionLabel: 'นำเข้าข้อมูลครั้งแรก',
@@ -3918,7 +4459,11 @@
                         triggerHostPageReload();
                         refreshMobileShellData();
                         if (typeof Swal !== 'undefined') {
-                            Swal.fire('นำเข้าข้อมูลสำเร็จ!', `เริ่มใช้งานฐานข้อมูลโรงงาน ${activeFactory} แล้ว`, 'success');
+                            if (fbDb && fbAuth?.currentUser && !savedCloud) {
+                                Swal.fire('นำเข้าข้อมูลในเครื่องแล้ว (รอซิงค์)', 'ไม่สามารถส่งข้อมูลขึ้นฐานข้อมูลกลางได้ชั่วคราว กรุณากดปุ่มซิงค์ข้อมูลด้านบนเมื่อออนไลน์พร้อมเพื่อให้เครื่องอื่นดึงข้อมูลล่าสุดได้', 'warning');
+                            } else {
+                                Swal.fire('นำเข้าข้อมูลสำเร็จ!', `เริ่มใช้งานฐานข้อมูลโรงงาน ${activeFactory} แล้ว`, 'success');
+                            }
                         }
                     } catch (err) {
                         if (typeof Swal !== 'undefined') Swal.fire('ไฟล์ไม่ถูกต้อง', err.message, 'error');
@@ -3940,7 +4485,11 @@
                 payload.initialized = true;
                 writeTenantLocalPayload(activeFactory, payload);
                 applyPayloadToWorkingLocalStorage(payload);
-                await saveFactoryToCloudNow(activeFactory, payload);
+                if (fbDb && fbAuth?.currentUser) await ensureCloudUserDocExists(activeFactory);
+                let savedCloud = await saveFactoryToCloudNow(activeFactory, payload);
+                if (!savedCloud && fbDb && fbAuth?.currentUser) {
+                    savedCloud = await saveFactoryToCloudNow(activeFactory, payload);
+                }
                 await writeAuditLog('FIRST_TIME_FRESH_START', activeFactory, {
                     category: 'data',
                     actionLabel: 'เริ่มต้นฐานข้อมูลใหม่',
@@ -3953,7 +4502,11 @@
                 triggerHostPageReload();
                 refreshMobileShellData();
                 if (typeof Swal !== 'undefined') {
-                    Swal.fire('พร้อมใช้งานแล้ว!', `สร้างฐานข้อมูลเริ่มต้นสำหรับ ${activeFactory} เรียบร้อย`, 'success');
+                    if (fbDb && fbAuth?.currentUser && !savedCloud) {
+                        Swal.fire('สร้างข้อมูลในเครื่องแล้ว (รอซิงค์)', 'ไม่สามารถส่งข้อมูลขึ้นฐานข้อมูลกลางได้ชั่วคราว กรุณากดปุ่มซิงค์ข้อมูลด้านบนเมื่อออนไลน์พร้อมเพื่อให้เครื่องอื่นจำสถานะ', 'warning');
+                    } else {
+                        Swal.fire('พร้อมใช้งานแล้ว!', `สร้างฐานข้อมูลเริ่มต้นสำหรับ ${activeFactory} เรียบร้อย`, 'success');
+                    }
                 }
             });
         }
@@ -4204,14 +4757,518 @@
         await renderAdminUsersTable();
     }
 
+    function formatCompactLitersAxis(v) {
+        const num = Number(v);
+        if (Math.abs(num) >= 1000000) return (num / 1000000).toFixed(2).replace(/\.?0+$/, '') + 'M';
+        if (Math.abs(num) >= 1000) return Math.round(num / 1000).toLocaleString() + 'k';
+        return Math.round(num).toLocaleString();
+    }
+    window.formatCompactLitersAxis = formatCompactLitersAxis;
+
+    // Collision-free Smart Data Labels Plugin for Chart.js (works across index.html & dashboard.html)
+    function createSmartDataLabelsPlugin(opts = {}) {
+        return {
+            id: opts.id || 'stockmsSmartDataLabels',
+            afterDatasetsDraw(chart) {
+                const { ctx, chartArea } = chart;
+                if (!ctx || !chartArea) return;
+                const placed = [];
+                const mode = opts.mode || 'vertical-bar'; // 'vertical-bar' | 'horizontal-bar' | 'percent-bar' | 'doughnut' | 'stacked-top' | 'trend-mixed'
+                const skipDatasets = Array.isArray(opts.skipDatasets) ? opts.skipDatasets : [];
+                const avoidYValues = typeof opts.getAvoidYPixels === 'function' ? (opts.getAvoidYPixels(chart) || []) : [];
+
+                const rectsOverlap = (a, b, pad = 2) => !(
+                    a.x + a.w + pad < b.x ||
+                    b.x + b.w + pad < a.x ||
+                    a.y + a.h + pad < b.y ||
+                    b.y + b.h + pad < a.y
+                );
+
+                const canPlace = (rect) => {
+                    if (rect.x < chartArea.left - 4 || rect.x + rect.w > chartArea.right + 12) return false;
+                    if (rect.y < chartArea.top - 14 || rect.y + rect.h > chartArea.bottom + 4) return false;
+                    for (const p of placed) {
+                        if (rectsOverlap(rect, p, 2)) return false;
+                    }
+                    return true;
+                };
+
+                const drawPillLabel = (text, cx, cy, bg, fg, align = 'center') => {
+                    ctx.font = opts.font || '800 9.5px Sarabun, sans-serif';
+                    const tw = ctx.measureText(text).width;
+                    const padX = 4.5;
+                    const h = 14;
+                    const w = tw + padX * 2;
+                    const x = align === 'left' ? cx : (align === 'right' ? cx - w : cx - w / 2);
+                    const y = cy - h / 2;
+                    const rect = { x, y, w, h };
+                    if (!canPlace(rect)) return false;
+                    placed.push(rect);
+
+                    ctx.save();
+                    ctx.fillStyle = bg;
+                    ctx.beginPath();
+                    const r = 4;
+                    ctx.moveTo(x + r, y);
+                    ctx.lineTo(x + w - r, y);
+                    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+                    ctx.lineTo(x + w, y + h - r);
+                    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+                    ctx.lineTo(x + r, y + h);
+                    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+                    ctx.lineTo(x, y + r);
+                    ctx.quadraticCurveTo(x, y, x + r, y);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    ctx.fillStyle = fg;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(text, x + w / 2, y + h / 2 + 0.5);
+                    ctx.restore();
+                    return true;
+                };
+
+                ctx.save();
+                if (mode === 'doughnut') {
+                    const meta = chart.getDatasetMeta(0);
+                    const ds = chart.data.datasets[0];
+                    if (meta && !meta.hidden && ds) {
+                        const total = (ds.data || []).reduce((s, v) => s + (Number(v) || 0), 0);
+                        if (total > 0) {
+                            meta.data.forEach((arc, i) => {
+                                const val = Number(ds.data[i]) || 0;
+                                const pct = (val / total) * 100;
+                                if (pct < 3.5) return;
+                                const pos = arc.tooltipPosition();
+                                drawPillLabel(`${pct.toFixed(1)}%`, pos.x, pos.y, 'rgba(15, 23, 42, 0.78)', '#ffffff', 'center');
+                            });
+                        }
+                    }
+                    ctx.restore();
+                    return;
+                }
+
+                if (mode === 'stacked-top') {
+                    const labels = chart.data.labels || [];
+                    const yScale = chart.scales.y;
+                    if (!yScale) { ctx.restore(); return; }
+                    const step = labels.length > 28 ? 2 : 1;
+                    labels.forEach((_, idx) => {
+                        if (idx % step !== 0) return;
+                        let sumVol = 0;
+                        let barX = null;
+                        chart.data.datasets.forEach((ds, dsIdx) => {
+                            if (String(ds.label || '').includes('Empty Space')) return;
+                            const meta = chart.getDatasetMeta(dsIdx);
+                            if (!meta || meta.hidden) return;
+                            sumVol += Number(ds.data[idx]) || 0;
+                            if (barX === null && meta.data?.[idx]) barX = meta.data[idx].x;
+                        });
+                        if (sumVol <= 0 || barX === null) return;
+                        const topY = yScale.getPixelForValue(sumVol);
+                        const txt = formatCompactLitersAxis(sumVol);
+                        if (!drawPillLabel(txt, barX, Math.max(chartArea.top + 8, topY - 9), 'rgba(15, 23, 42, 0.80)', '#ffffff', 'center')) {
+                            drawPillLabel(txt, barX, Math.min(chartArea.bottom - 10, topY + 11), 'rgba(15, 23, 42, 0.80)', '#ffffff', 'center');
+                        }
+                    });
+                    ctx.restore();
+                    return;
+                }
+
+                chart.data.datasets.forEach((ds, dsIdx) => {
+                    if (skipDatasets.includes(dsIdx)) return;
+                    const meta = chart.getDatasetMeta(dsIdx);
+                    if (!meta || meta.hidden) return;
+
+                    meta.data.forEach((el, idx) => {
+                        const rawVal = Number(ds.data?.[idx]);
+                        if (!isFinite(rawVal) || Math.abs(rawVal) < 0.01) return;
+
+                        if (mode === 'horizontal-bar') {
+                            const txt = `${formatCompactLitersAxis(rawVal)} L`;
+                            const baseX = Math.min(el.x, el.base);
+                            const tipX = Math.max(el.x, el.base);
+                            const barW = tipX - baseX;
+                            if (!drawPillLabel(txt, tipX + 4, el.y, 'rgba(255, 255, 255, 0.92)', dsIdx === 0 ? '#065f46' : '#1e40af', 'left')) {
+                                if (barW > 46) {
+                                    drawPillLabel(txt, tipX - 4, el.y, 'rgba(15, 23, 42, 0.78)', '#ffffff', 'right');
+                                }
+                            }
+                        } else if (mode === 'percent-bar') {
+                            const txt = `${Math.round(rawVal)}%`;
+                            const topY = Math.min(el.y, el.base);
+                            const botY = Math.max(el.y, el.base);
+                            const barH = botY - topY;
+                            const stagger = (dsIdx % 2 === 1) ? 13 : 0;
+                            const candidates = barH >= 28
+                                ? [topY + 11 + stagger, (topY + botY) / 2, topY - 9 - (stagger * 0.4)]
+                                : [topY - 9 - stagger, topY - 21];
+                            for (const cy of candidates) {
+                                const inside = cy > topY && cy < botY;
+                                if (drawPillLabel(txt, el.x, cy, inside ? 'rgba(15, 23, 42, 0.76)' : 'rgba(255, 255, 255, 0.92)', inside ? '#ffffff' : '#0f172a', 'center')) {
+                                    break;
+                                }
+                            }
+                        } else if (mode === 'trend-mixed') {
+                            const totalPts = (ds.data || []).length;
+                            const stride = totalPts > 18 ? Math.ceil(totalPts / 8) : (totalPts > 10 ? 2 : 1);
+                            if (idx !== totalPts - 1 && idx % stride !== 0) return;
+                            const txt = formatCompactLitersAxis(rawVal);
+                            const candidates = ds.type === 'line'
+                                ? [el.y - 11, el.y + 12]
+                                : [el.y - 9, el.y + 10];
+                            for (const cy of candidates) {
+                                if (drawPillLabel(txt, el.x, cy, 'rgba(15, 23, 42, 0.78)', '#ffffff', 'center')) break;
+                            }
+                        } else {
+                            // 'vertical-bar' (e.g. #adminCompareBarCanvas with Working Volume cap lines)
+                            const txt = formatCompactLitersAxis(rawVal);
+                            const topY = Math.min(el.y, el.base);
+                            const botY = Math.max(el.y, el.base);
+                            const barH = botY - topY;
+                            const avoidY = avoidYValues[idx]?.[dsIdx];
+                            const candidates = [];
+                            if (barH >= 24) {
+                                candidates.push({ cy: topY + Math.min(18, barH * 0.42), inside: true });
+                                candidates.push({ cy: topY + barH * 0.65, inside: true });
+                            }
+                            candidates.push({ cy: topY - 10, inside: false });
+                            candidates.push({ cy: topY - 23, inside: false });
+
+                            for (const cand of candidates) {
+                                if (avoidY !== undefined && Math.abs(cand.cy - avoidY) < 9 && barH >= 24) continue;
+                                if (drawPillLabel(txt, el.x, cand.cy, cand.inside ? 'rgba(15, 23, 42, 0.76)' : 'rgba(255, 255, 255, 0.94)', cand.inside ? '#ffffff' : (dsIdx === 0 ? '#065f46' : '#1e40af'), 'center')) {
+                                    break;
+                                }
+                            }
+                        }
+                    });
+                });
+                ctx.restore();
+            }
+        };
+    }
+    window.createSmartDataLabelsPlugin = createSmartDataLabelsPlugin;
+
+    function setAdminTopRankMode(metric, period) {
+        if (metric === 'prod' || metric === 'pack') adminTopRankMetric = metric;
+        if (period === '30d' || period === 'all') adminTopRankPeriod = period;
+        renderAdminTopRankSection(adminCompareCachedRows);
+    }
+
+    function setAdminInsightCategory(catId) {
+        adminInsightCategoryFilter = ['ALL', 'policy', 'production', 'quality', 'fleet'].includes(catId) ? catId : 'ALL';
+        renderAdminFactoryInsightsGrid(adminCompareCachedRows);
+    }
+
+    function renderAdminTopRankSection(rows) {
+        const listEl = document.getElementById('adminTopRankList');
+        const canvas = document.getElementById('adminTopRankCanvas');
+        if (!Array.isArray(rows) || !rows.length) {
+            if (adminTopRankChart) { adminTopRankChart.destroy(); adminTopRankChart = null; }
+            if (listEl) listEl.innerHTML = '<div class="p-4 text-center text-xs text-slate-400">ยังไม่มีข้อมูลโรงงาน</div>';
+            return;
+        }
+
+        document.querySelectorAll('[data-toprank-metric]').forEach(btn => {
+            const active = btn.getAttribute('data-toprank-metric') === adminTopRankMetric;
+            btn.className = active
+                ? `px-2.5 py-1 rounded-lg text-[11px] font-extrabold ${adminTopRankMetric === 'prod' ? 'bg-emerald-600' : 'bg-blue-600'} text-white`
+                : 'px-2.5 py-1 rounded-lg text-[11px] font-bold text-slate-600';
+        });
+        document.querySelectorAll('[data-toprank-period]').forEach(btn => {
+            const active = btn.getAttribute('data-toprank-period') === adminTopRankPeriod;
+            btn.className = active
+                ? 'px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-slate-800 text-white'
+                : 'px-2.5 py-1 rounded-lg text-[11px] font-bold text-slate-600';
+        });
+
+        const getProdVal = (a) => adminTopRankPeriod === 'all' ? (Number(a.prodTotal) || 0) : (Number(a.prod30d) || 0);
+        const getPackVal = (a) => adminTopRankPeriod === 'all' ? (Number(a.packTotal) || 0) : (Number(a.pack30d) || 0);
+
+        const sorted = [...rows].sort((r1, r2) => {
+            const p1 = adminTopRankMetric === 'pack' ? getPackVal(r1.analytics) : getProdVal(r1.analytics);
+            const p2 = adminTopRankMetric === 'pack' ? getPackVal(r2.analytics) : getProdVal(r2.analytics);
+            if (p2 !== p1) return p2 - p1;
+            const s1 = adminTopRankMetric === 'pack' ? getProdVal(r1.analytics) : getPackVal(r1.analytics);
+            const s2 = adminTopRankMetric === 'pack' ? getProdVal(r2.analytics) : getPackVal(r2.analytics);
+            return s2 - s1;
+        });
+
+        const maxMetricVal = Math.max(1, ...sorted.map(r => adminTopRankMetric === 'pack' ? getPackVal(r.analytics) : getProdVal(r.analytics)));
+        const totalProdSum = sorted.reduce((s, r) => s + getProdVal(r.analytics), 0);
+        const totalPackSum = sorted.reduce((s, r) => s + getPackVal(r.analytics), 0);
+        const periodLabel = adminTopRankPeriod === 'all' ? 'สะสม' : '30 วัน';
+
+        if (listEl) {
+            listEl.innerHTML = sorted.map((r, i) => {
+                const a = r.analytics;
+                const pVal = getProdVal(a);
+                const kVal = getPackVal(a);
+                const primaryVal = adminTopRankMetric === 'pack' ? kVal : pVal;
+                const share = adminTopRankMetric === 'pack'
+                    ? (totalPackSum > 0 ? (kVal / totalPackSum) * 100 : 0)
+                    : (totalProdSum > 0 ? (pVal / totalProdSum) * 100 : 0);
+                const barW = Math.min(100, Math.round((primaryVal / maxMetricVal) * 100));
+                const badgeCls = i === 0
+                    ? 'bg-amber-400 text-amber-950'
+                    : (i === 1 ? 'bg-slate-300 text-slate-800' : (i === 2 ? 'bg-orange-300 text-orange-950' : 'bg-slate-100 text-slate-600'));
+                const barCls = adminTopRankMetric === 'pack' ? 'bg-blue-500' : 'bg-emerald-500';
+                return `
+                    <div class="p-2.5 rounded-xl border border-slate-200 bg-slate-50/70">
+                        <div class="flex items-center justify-between gap-2 mb-1">
+                            <div class="flex items-center gap-2 min-w-0">
+                                <span class="w-6 h-6 rounded-lg ${badgeCls} text-[11px] font-black flex items-center justify-center flex-shrink-0">#${i + 1}</span>
+                                <div class="min-w-0">
+                                    <div class="text-xs font-extrabold text-slate-800 truncate">${escapeHtml(a.factoryName)}</div>
+                                    <div class="text-[10px] text-slate-400">${escapeHtml(a.username.toUpperCase())} • สัดส่วน ${share.toFixed(1)}%</div>
+                                </div>
+                            </div>
+                            <div class="text-right text-[10px] font-bold tabular-nums flex-shrink-0">
+                                <div class="text-emerald-700">ผลิต (${periodLabel}): <b>${pVal.toLocaleString()} L</b></div>
+                                <div class="text-blue-700">บรรจุ (${periodLabel}): <b>${kVal.toLocaleString()} L</b></div>
+                            </div>
+                        </div>
+                        <div class="w-full h-1.5 bg-slate-200/80 rounded-full overflow-hidden">
+                            <div class="h-full ${barCls} rounded-full transition-all" style="width:${barW}%"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        if (canvas && typeof Chart !== 'undefined') {
+            if (adminTopRankChart) adminTopRankChart.destroy();
+            adminTopRankChart = new Chart(canvas.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: sorted.map((r, i) => `#${i + 1} ${r.analytics.username.toUpperCase()}`),
+                    datasets: [
+                        { label: `ยอดผลิต (${periodLabel} L)`, data: sorted.map(r => getProdVal(r.analytics)), backgroundColor: '#10b981', borderRadius: 5, barPercentage: 0.78, categoryPercentage: 0.78, datalabels: { display: false } },
+                        { label: `ยอดบรรจุ (${periodLabel} L)`, data: sorted.map(r => getPackVal(r.analytics)), backgroundColor: '#3b82f6', borderRadius: 5, barPercentage: 0.78, categoryPercentage: 0.78, datalabels: { display: false } }
+                    ]
+                },
+                plugins: [createSmartDataLabelsPlugin({ id: 'stockmsTopRankLabels', mode: 'horizontal-bar' })],
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { right: 56, top: 4, bottom: 2 } },
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        datalabels: { display: false },
+                        legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 10, font: { size: 10, family: 'Sarabun', weight: 'bold' } } },
+                        tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${Number(ctx.parsed.x || 0).toLocaleString()} L` } }
+                    },
+                    scales: {
+                        x: { beginAtZero: true, grace: '22%', grid: { color: 'rgba(148,163,184,0.18)' }, ticks: { font: { size: 10, family: 'Sarabun' }, callback: formatCompactLitersAxis } },
+                        y: { grid: { display: false }, ticks: { font: { size: 10, family: 'Sarabun', weight: 'bold' } } }
+                    }
+                }
+            });
+        }
+    }
+
+    function renderAdminExtraVisuals(rows) {
+        const policyCanvas = document.getElementById('adminPolicyMetricsCanvas');
+        if (policyCanvas && typeof Chart !== 'undefined') {
+            if (adminPolicyMetricsChart) adminPolicyMetricsChart.destroy();
+            const policy95LinePlugin = {
+                id: 'stockmsPolicy95Line',
+                afterDatasetsDraw(chart) {
+                    const yScale = chart.scales.y;
+                    const { left, right } = chart.chartArea || {};
+                    if (!yScale || left === undefined) return;
+                    const y95 = yScale.getPixelForValue(95);
+                    const { ctx } = chart;
+                    ctx.save();
+                    ctx.strokeStyle = '#e11d48';
+                    ctx.lineWidth = 1.6;
+                    ctx.setLineDash([5, 4]);
+                    ctx.beginPath();
+                    ctx.moveTo(left, y95);
+                    ctx.lineTo(right, y95);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            };
+            adminPolicyMetricsChart = new Chart(policyCanvas.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: rows.map(r => r.analytics.username.toUpperCase()),
+                    datasets: [
+                        { label: '% คงคลังเทียบความจุ', data: rows.map(r => Math.min(115, Number(r.analytics.utilizationPct || 0))), backgroundColor: '#6366f1', borderRadius: 5, datalabels: { display: false } },
+                        { label: '% 70° บ่มครบ 14 วัน', data: rows.map(r => r.analytics.v70 > 0 ? Number(((r.analytics.ready70 / r.analytics.v70) * 100).toFixed(1)) : 0), backgroundColor: '#10b981', borderRadius: 5, datalabels: { display: false } },
+                        { label: '% QC ผ่านเกณฑ์', data: rows.map(r => Number(r.analytics.qcPassRate || 0)), backgroundColor: '#f59e0b', borderRadius: 5, datalabels: { display: false } }
+                    ]
+                },
+                plugins: [policy95LinePlugin, createSmartDataLabelsPlugin({ id: 'stockmsPolicyLabels', mode: 'percent-bar', font: '800 8.5px Sarabun, sans-serif' })],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 14, right: 6, left: 4 } },
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        datalabels: { display: false },
+                        legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 10, font: { size: 10, family: 'Sarabun', weight: 'bold' } } },
+                        tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${Number(ctx.parsed.y || 0).toFixed(1)}%` } }
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { font: { size: 10, family: 'Sarabun', weight: 'bold' } } },
+                        y: { beginAtZero: true, max: 118, grid: { color: 'rgba(148,163,184,0.18)' }, ticks: { stepSize: 20, font: { size: 10, family: 'Sarabun' }, callback: (v) => `${v}%` } }
+                    }
+                }
+            });
+        }
+
+        const mixCanvas = document.getElementById('adminDegreeMixCanvas');
+        const mixLegend = document.getElementById('adminDegreeMixLegend');
+        const degSums = [
+            { label: '70°', val: rows.reduce((s, r) => s + (Number(r.analytics.v70) || 0), 0), color: '#10b981' },
+            { label: '40°', val: rows.reduce((s, r) => s + (Number(r.analytics.v40) || 0), 0), color: '#3b82f6' },
+            { label: '35°', val: rows.reduce((s, r) => s + (Number(r.analytics.v35) || 0), 0), color: '#8b5cf6' },
+            { label: '30°', val: rows.reduce((s, r) => s + (Number(r.analytics.v30) || 0), 0), color: '#f59e0b' },
+            { label: '28°', val: rows.reduce((s, r) => s + (Number(r.analytics.v28) || 0), 0), color: '#ec4899' }
+        ];
+        const totalDegVol = degSums.reduce((s, d) => s + d.val, 0);
+        if (mixLegend) {
+            mixLegend.innerHTML = degSums.map(d => {
+                const pct = totalDegVol > 0 ? ((d.val / totalDegVol) * 100).toFixed(1) : '0.0';
+                return `<div class="px-2 py-1 rounded-lg bg-white border border-slate-200 flex items-center justify-between gap-1"><span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:${d.color}"></span>${d.label}</span><span class="tabular-nums text-slate-700">${pct}% (${formatCompactLitersAxis(d.val)})</span></div>`;
+            }).join('');
+        }
+        if (mixCanvas && typeof Chart !== 'undefined') {
+            if (adminDegreeMixChart) adminDegreeMixChart.destroy();
+            adminDegreeMixChart = new Chart(mixCanvas.getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: degSums.map(d => `${d.label} (L)`),
+                    datasets: [{
+                        data: totalDegVol > 0 ? degSums.map(d => d.val) : [1, 0, 0, 0, 0],
+                        backgroundColor: degSums.map(d => d.color),
+                        borderWidth: 2,
+                        borderColor: '#ffffff',
+                        datalabels: { display: false }
+                    }]
+                },
+                plugins: [createSmartDataLabelsPlugin({ id: 'stockmsDegreeMixLabels', mode: 'doughnut' })],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '58%',
+                    plugins: {
+                        datalabels: { display: false },
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => {
+                                    const v = totalDegVol > 0 ? Number(ctx.parsed || 0) : 0;
+                                    const p = totalDegVol > 0 ? ((v / totalDegVol) * 100).toFixed(1) : '0.0';
+                                    return `${ctx.label}: ${v.toLocaleString()} L (${p}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    function renderAdminFactoryInsightsGrid(rows) {
+        const gridEl = document.getElementById('adminFactoryInsightsGrid');
+        if (!gridEl) return;
+
+        document.querySelectorAll('[data-insight-cat]').forEach(btn => {
+            const active = btn.getAttribute('data-insight-cat') === adminInsightCategoryFilter;
+            btn.className = active
+                ? 'px-3 py-1.5 rounded-xl bg-slate-800 text-white text-[11px] font-extrabold'
+                : 'px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 text-[11px] font-bold hover:bg-slate-200';
+        });
+
+        const iconForLevel = (lvl) => lvl === 'critical' ? 'fa-exclamation-circle text-rose-600'
+            : (lvl === 'warn' ? 'fa-exclamation-triangle text-amber-600'
+                : (lvl === 'ok' ? 'fa-check-circle text-emerald-600' : 'fa-info-circle text-blue-600'));
+
+        gridEl.innerHTML = rows.map(r => {
+            const a = r.analytics;
+            const ins = r.insight;
+            const rk = r.rank || {};
+            const free70 = Number(a.freeCap70 !== undefined ? a.freeCap70 : Math.max(0, (a.cap70 || 0) - a.v70));
+            const free40 = Number(a.freeCap40 !== undefined ? a.freeCap40 : Math.max(0, (a.cap40 || 0) - (a.v40 + a.vLowOther)));
+            const borderCls = ins.riskLevel === 'critical'
+                ? 'border-rose-300 dark:border-rose-800 bg-rose-50/40 dark:bg-rose-950/20'
+                : (ins.riskLevel === 'watch'
+                    ? 'border-amber-300 dark:border-amber-800 bg-amber-50/40 dark:bg-amber-950/20'
+                    : 'border-emerald-300 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-950/20');
+            const tagCls = ins.riskLevel === 'critical'
+                ? 'bg-rose-600 text-white'
+                : (ins.riskLevel === 'watch' ? 'bg-amber-500 text-white' : 'bg-emerald-600 text-white');
+            const tagText = ins.riskLevel === 'critical' ? 'ต่ำกว่า 95% / เร่งด่วน' : (ins.riskLevel === 'watch' ? 'ติดตามเป้า 95%' : 'ผ่านเกณฑ์ ≥95%');
+
+            const cats = Array.isArray(ins.categories) && ins.categories.length
+                ? ins.categories.filter(c => adminInsightCategoryFilter === 'ALL' || c.id === adminInsightCategoryFilter)
+                : [{ id: 'policy', label: 'บทสรุปวิเคราะห์', icon: 'fa-clipboard-list', badgeCls: 'bg-slate-100 text-slate-700 border-slate-200', items: ins.recommendations || [] }];
+
+            const categorizedHtml = cats.map(cat => {
+                const itemsHtml = (cat.items || []).map(rec => `
+                    <li class="flex items-start gap-2 text-xs leading-relaxed text-slate-700 dark:text-slate-200">
+                        <i class="fas ${iconForLevel(rec.level)} mt-1 flex-shrink-0"></i>
+                        <span class="break-words">${escapeHtml(rec.text)}</span>
+                    </li>
+                `).join('');
+                return `
+                    <div class="p-2.5 rounded-xl bg-white/85 border border-slate-200/80 space-y-1.5">
+                        <div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg border text-[10px] font-extrabold ${cat.badgeCls || 'bg-slate-50 text-slate-700 border-slate-200'}">
+                            <i class="fas ${cat.icon || 'fa-layer-group'}"></i>
+                            <span>${escapeHtml(cat.label)}</span>
+                        </div>
+                        <ul class="space-y-1.5">${itemsHtml}</ul>
+                    </div>
+                `;
+            }).join('');
+
+            return `
+                <div class="p-3.5 sm:p-4 rounded-2xl border ${borderCls} flex flex-col justify-between gap-2.5">
+                    <div>
+                        <div class="flex flex-wrap justify-between items-start gap-2 mb-2">
+                            <div class="min-w-0">
+                                <div class="font-black text-sm text-slate-800 dark:text-white break-words">${escapeHtml(a.factoryName)} <span class="text-xs font-semibold text-slate-400">(${escapeHtml(a.username)})</span></div>
+                                <div class="text-[11px] font-bold text-slate-600 dark:text-slate-300 leading-snug mt-0.5">${escapeHtml(ins.headline)}</div>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-1">
+                                ${a.initialized ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">ผลิต #${rk.prodRank30d || '-'}</span><span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-100 text-blue-800 border border-blue-200">บรรจุ #${rk.packRank30d || '-'}</span>` : ''}
+                                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold whitespace-nowrap ${tagCls}">${tagText}</span>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mb-2.5 text-[10px] font-bold">
+                            <div class="px-2 py-1.5 rounded-xl bg-white/80 border border-emerald-200 text-emerald-800 tabular-nums">ว่าง 70°: <b>${free70.toLocaleString()} L</b></div>
+                            <div class="px-2 py-1.5 rounded-xl bg-white/80 border border-blue-200 text-blue-800 tabular-nums">ว่าง 40°: <b>${free40.toLocaleString()} L</b></div>
+                            <div class="px-2 py-1.5 rounded-xl bg-white/80 border border-teal-200 text-teal-800 tabular-nums">ผลิต30วัน: <b>${(a.prod30d || 0).toLocaleString()} L</b></div>
+                            <div class="px-2 py-1.5 rounded-xl bg-white/80 border border-indigo-200 text-indigo-800 tabular-nums">บรรจุ30วัน: <b>${(a.pack30d || 0).toLocaleString()} L</b></div>
+                        </div>
+                        <div class="space-y-2 mt-2">${categorizedHtml}</div>
+                    </div>
+                    <div class="pt-2 border-t border-slate-200/70 dark:border-slate-700/70 flex flex-wrap justify-between items-center gap-2 text-[11px] text-slate-500">
+                        <span>รายการ: <b>${a.txCount}</b> • QC ค้าง&gt;24ชม.: <b>${a.pendingQc24hCount || 0} ถัง</b></span>
+                        <button type="button" onclick="window.StockMSAuth.switchAdminFactory('${escapeHtml(a.username)}'); window.StockMSUI.closeModal('adminCompareModal');" class="font-extrabold text-blue-600 hover:underline whitespace-nowrap">สลับดูคลังนี้ →</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
     async function openAdminCompareModal() {
         const s = getSession();
         if (!s || s.role !== 'admin') return;
         document.getElementById('adminCompareModal')?.classList.remove('hidden');
 
         const rows = await loadAllFactoriesComparison();
+        adminCompareCachedRows = rows;
         const totalNetworkStock = rows.reduce((sum, r) => sum + r.analytics.totalVol, 0);
         const totalNetworkCap = rows.reduce((sum, r) => sum + r.analytics.totalCap, 0);
+        const totalNetworkProd30 = rows.reduce((sum, r) => sum + (Number(r.analytics.prod30d) || 0), 0);
+        const totalNetworkPack30 = rows.reduce((sum, r) => sum + (Number(r.analytics.pack30d) || 0), 0);
         const netUtil = totalNetworkCap > 0 ? ((totalNetworkStock / totalNetworkCap) * 100).toFixed(1) : '0.0';
         const criticalCount = rows.filter(r => r.insight.riskLevel === 'critical').length;
 
@@ -4224,12 +5281,16 @@
                 <div class="text-[10px] sm:text-[11px] font-bold text-emerald-600 dark:text-emerald-400">ปริมาณสุรารวมทุกโรงงาน</div>
                 <div class="text-lg sm:text-xl font-black mt-0.5 tabular-nums">${totalNetworkStock.toLocaleString()} L</div>
             </div>
-            <div class="p-3 sm:p-3.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800">
-                <div class="text-[10px] sm:text-[11px] font-bold text-indigo-600 dark:text-indigo-400">คงคลังรวมเทียบเป้า (≥95%)</div>
-                <div class="text-lg sm:text-xl font-black mt-0.5 tabular-nums ${Number(netUtil) >= 95 ? 'text-emerald-700' : 'text-amber-600'}">${netUtil}%</div>
+            <div class="p-3 sm:p-3.5 rounded-2xl bg-teal-50 border border-teal-200">
+                <div class="text-[10px] sm:text-[11px] font-bold text-teal-700">ยอดผลิตรวม 30 วัน</div>
+                <div class="text-lg sm:text-xl font-black mt-0.5 tabular-nums text-teal-800">${totalNetworkProd30.toLocaleString()} L</div>
+            </div>
+            <div class="p-3 sm:p-3.5 rounded-2xl bg-sky-50 border border-sky-200">
+                <div class="text-[10px] sm:text-[11px] font-bold text-sky-700">ยอดบรรจุรวม 30 วัน</div>
+                <div class="text-lg sm:text-xl font-black mt-0.5 tabular-nums text-sky-800">${totalNetworkPack30.toLocaleString()} L</div>
             </div>
             <div class="p-3 sm:p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800">
-                <div class="text-[10px] sm:text-[11px] font-bold text-rose-600 dark:text-rose-400">ต่ำกว่าเกณฑ์/ต้องเร่งแก้</div>
+                <div class="text-[10px] sm:text-[11px] font-bold text-rose-600 dark:text-rose-400">คงคลังรวม ${netUtil}% / เร่งแก้</div>
                 <div class="text-lg sm:text-xl font-black mt-0.5">${criticalCount} แห่ง</div>
             </div>
         `;
@@ -4319,11 +5380,26 @@
                         { label: 'ลิมิต WV (40°)', data: cap40Arr, type: 'line', showLine: false, borderColor: '#1d4ed8', backgroundColor: '#1d4ed8', borderDash: [4, 2], borderWidth: 2, pointStyle: 'line', pointRadius: 0, pointHoverRadius: 0, fill: false, order: 1, datalabels: { display: false } }
                     ]
                 },
-                plugins: [workingVolLimitPlugin],
+                plugins: [
+                    workingVolLimitPlugin,
+                    createSmartDataLabelsPlugin({
+                        id: 'stockmsWorkingVolBarLabels',
+                        mode: 'vertical-bar',
+                        skipDatasets: [2, 3],
+                        getAvoidYPixels: (ch) => {
+                            const ys = ch.scales.y;
+                            if (!ys) return [];
+                            return rows.map(r => [
+                                r.analytics.cap70 ? ys.getPixelForValue(r.analytics.cap70) : undefined,
+                                r.analytics.cap40 ? ys.getPixelForValue(r.analytics.cap40) : undefined
+                            ]);
+                        }
+                    })
+                ],
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    layout: { padding: { top: 12, right: 8, left: 4, bottom: 2 } },
+                    layout: { padding: { top: 18, right: 8, left: 4, bottom: 2 } },
                     interaction: { mode: 'index', intersect: false },
                     plugins: {
                         datalabels: { display: false },
@@ -4346,67 +5422,16 @@
                             beginAtZero: true,
                             suggestedMax: Math.max(...cap70Arr, ...cap40Arr, 1000) * 1.12,
                             grid: { color: 'rgba(148, 163, 184, 0.18)' },
-                            ticks: {
-                                font: { size: 10, family: 'Sarabun' },
-                                callback: (v) => {
-                                    const num = Number(v);
-                                    if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-                                    if (num >= 1000) return Math.round(num / 1000) + 'k';
-                                    return num;
-                                }
-                            }
+                            ticks: { font: { size: 10, family: 'Sarabun' }, callback: formatCompactLitersAxis }
                         }
                     }
                 }
             });
         }
 
-        // Render Per-Factory Executive Summaries & Recommendations (Mobile-friendly wrapping & spacing)
-        document.getElementById('adminFactoryInsightsGrid').innerHTML = rows.map(r => {
-            const a = r.analytics;
-            const ins = r.insight;
-            const free70 = Number(a.freeCap70 !== undefined ? a.freeCap70 : Math.max(0, (a.cap70 || 0) - a.v70));
-            const free40 = Number(a.freeCap40 !== undefined ? a.freeCap40 : Math.max(0, (a.cap40 || 0) - (a.v40 + a.vLowOther)));
-            const borderCls = ins.riskLevel === 'critical'
-                ? 'border-rose-300 dark:border-rose-800 bg-rose-50/40 dark:bg-rose-950/20'
-                : (ins.riskLevel === 'watch'
-                    ? 'border-amber-300 dark:border-amber-800 bg-amber-50/40 dark:bg-amber-950/20'
-                    : 'border-emerald-300 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-950/20');
-            const tagCls = ins.riskLevel === 'critical'
-                ? 'bg-rose-600 text-white'
-                : (ins.riskLevel === 'watch' ? 'bg-amber-500 text-white' : 'bg-emerald-600 text-white');
-            const tagText = ins.riskLevel === 'critical' ? 'ต่ำกว่า 95% / เร่งด่วน' : (ins.riskLevel === 'watch' ? 'ติดตามเป้า 95%' : 'ผ่านเกณฑ์ ≥95%');
-
-            const recItems = ins.recommendations.map(rec => {
-                const ic = rec.level === 'critical' ? 'fa-exclamation-circle text-rose-600'
-                    : (rec.level === 'warn' ? 'fa-exclamation-triangle text-amber-600'
-                        : (rec.level === 'ok' ? 'fa-check-circle text-emerald-600' : 'fa-info-circle text-blue-600'));
-                return `<li class="flex items-start gap-2 text-xs leading-relaxed text-slate-700 dark:text-slate-200"><i class="fas ${ic} mt-1 flex-shrink-0"></i><span class="break-words">${escapeHtml(rec.text)}</span></li>`;
-            }).join('');
-
-            return `
-                <div class="p-3.5 sm:p-4 rounded-2xl border ${borderCls} flex flex-col justify-between gap-2.5">
-                    <div>
-                        <div class="flex flex-wrap justify-between items-start gap-2 mb-2">
-                            <div class="min-w-0">
-                                <div class="font-black text-sm text-slate-800 dark:text-white break-words">${escapeHtml(a.factoryName)} <span class="text-xs font-semibold text-slate-400">(${escapeHtml(a.username)})</span></div>
-                                <div class="text-[11px] font-bold text-slate-600 dark:text-slate-300 leading-snug mt-0.5">${escapeHtml(ins.headline)}</div>
-                            </div>
-                            <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold whitespace-nowrap ${tagCls}">${tagText}</span>
-                        </div>
-                        <div class="grid grid-cols-2 gap-1.5 mb-2.5 text-[10px] font-bold">
-                            <div class="px-2.5 py-1.5 rounded-xl bg-white/80 border border-emerald-200 text-emerald-800 tabular-nums">ว่าง 70°: <b>${free70.toLocaleString()} L</b></div>
-                            <div class="px-2.5 py-1.5 rounded-xl bg-white/80 border border-blue-200 text-blue-800 tabular-nums">ว่าง 40°: <b>${free40.toLocaleString()} L</b></div>
-                        </div>
-                        <ul class="space-y-2 mt-2">${recItems}</ul>
-                    </div>
-                    <div class="pt-2 border-t border-slate-200/70 dark:border-slate-700/70 flex flex-wrap justify-between items-center gap-2 text-[11px] text-slate-500">
-                        <span>รายการ: <b>${a.txCount}</b> • รับ30วัน: <b>${a.in30d.toLocaleString()} L</b> • จ่าย30วัน: <b>${a.out30d.toLocaleString()} L</b></span>
-                        <button type="button" onclick="window.StockMSAuth.switchAdminFactory('${escapeHtml(a.username)}'); window.StockMSUI.closeModal('adminCompareModal');" class="font-extrabold text-blue-600 hover:underline whitespace-nowrap">สลับดูคลังนี้ →</button>
-                    </div>
-                </div>
-            `;
-        }).join('');
+        renderAdminTopRankSection(rows);
+        renderAdminExtraVisuals(rows);
+        renderAdminFactoryInsightsGrid(rows);
     }
 
     async function renderAdminLogsModal(forceCloudSync = false) {
@@ -5523,6 +6548,8 @@
         navigateSeamlessly,
         handleSeamlessHostNav,
         openAdminCompareModal,
+        setAdminTopRankMode,
+        setAdminInsightCategory,
         openAdminLogsModal,
         renderAdminLogsModal,
         previewLogSnapshot,
@@ -5628,7 +6655,7 @@
         }
 
         // Wait briefly for Firebase Auth persistence restore on page reload; sign out legacy anonymous tokens
-        const restoredUser = await waitForFirebaseAuthRestore(1200);
+        const restoredUser = await waitForFirebaseAuthRestore(3500);
         if (restoredUser && restoredUser.isAnonymous && fbAuth) {
             try { await fbAuth.signOut(); } catch (e) { }
             clearSession();
